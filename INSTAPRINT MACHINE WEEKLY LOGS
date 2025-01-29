@@ -1,0 +1,182 @@
+#BASTA I COPY N PASTE LANG LAHAT NG NASA BABA
+#DATE: 1/29/25
+
+import tkinter as tk
+import os
+from tkinter import filedialog, messagebox
+from PIL import Image, ImageTk, ImageDraw
+
+class GradientApp:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Gradient Slides with Tkinter")
+        self.root.attributes('-fullscreen', True)  # Full-screen mode
+
+        # Create canvas
+        self.canvas = tk.Canvas(root, highlightthickness=0)
+        self.canvas.pack(fill=tk.BOTH, expand=True)
+
+        # 1ST SLIDE LOGO AND FUNCTION
+        self.logo_path = "InstaPrint Logo.png"  # Change this to your actual image file
+        self.logo_tk = self.create_circular_logo(self.logo_path, size=500)
+
+        self.current_slide = 1  # Track which slide is active
+        self.file_path = None  # Store the uploaded file path
+
+        # Draw initial slide
+        self.draw_slide()
+
+        # Bind key press event to move to the next slide
+        root.bind("<Key>", self.next_slide)
+
+        # Redraw on resize
+        self.canvas.bind("<Configure>", self.draw_slide)
+
+        # Exit full-screen on 'Esc' key press
+        root.bind("<Escape>", lambda event: root.destroy())
+
+    def draw_gradient(self, width, height, start_color, end_color):
+        """Draws a vertical gradient on the canvas."""
+        self.canvas.delete("all")  # Clear previous drawing
+        r1, g1, b1 = self.canvas.winfo_rgb(start_color)
+        r2, g2, b2 = self.canvas.winfo_rgb(end_color)
+
+        steps = height  # Number of gradient steps
+        for i in range(steps):
+            r = int(r1 + (r2 - r1) * (i / steps))
+            g = int(g1 + (g2 - g1) * (i / steps))
+            b = int(b1 + (b2 - b1) * (i / steps))
+            color = f'#{r // 256:02x}{g // 256:02x}{b // 256:02x}'
+            self.canvas.create_line(0, i, width, i, fill=color, width=1)
+
+    # FOR LOGO AND FUNCTION (1ST SLIDE)
+    def create_circular_logo(self, image_path, size=400):
+        """Loads an image and crops it into a circle."""
+        img = Image.open(image_path).convert("RGBA")
+        img = img.resize((size, size), Image.Resampling.LANCZOS)
+
+        # Create a circular mask
+        mask = Image.new("L", (size, size), 0)
+        draw = ImageDraw.Draw(mask)
+        draw.ellipse((0, 0, size, size), fill=250)
+
+        # Apply the circular mask
+        circular_img = Image.new("RGBA", (size, size))
+        circular_img.paste(img, (0, 0), mask)
+
+        return ImageTk.PhotoImage(circular_img)
+
+    # FOR THE SECOND SLIDE AND FUNCTION
+    def load_image_slide2(self, image_path, size=(500, 500)):
+        """Loads an image for the second slide and resizes it."""
+        img = Image.open(image_path).convert("RGBA")
+        img = img.resize(size, Image.Resampling.LANCZOS)
+        return ImageTk.PhotoImage(img)
+
+    def draw_slide(self, event=None):
+        """Draws the current slide based on self.current_slide."""
+        width, height = self.root.winfo_screenwidth(), self.root.winfo_screenheight()
+        self.draw_gradient(width, height, "#0d084d", "#0066cc")
+
+        # Ensure canvas is updated
+        self.canvas.update_idletasks()
+
+        if self.current_slide == 1:
+            self.place_logo(width, height)
+            self.display_text_slide1(width, height)
+        elif self.current_slide == 2:
+            self.display_text_slide2(width, height)
+        elif self.current_slide == 3:
+            self.display_text_slide3(width, height)
+
+    def place_logo(self, width, height):
+        """Places the circular logo at the center of the window."""
+        logo_x, logo_y = width // 2, height // 2 - 50  # Move slightly up to make space for text
+        self.canvas.create_image(logo_x, logo_y, image=self.logo_tk, anchor=tk.CENTER)
+
+    def display_text_slide1(self, width, height):
+        """Displays 'Press any key to continue!' lower on the screen."""
+        text_x, text_y = width // 2, height - 150  # Move text lower
+        self.canvas.create_text(text_x, text_y, text="Press any key to continue!",
+                                font=("Arial", 40, "bold"), fill="white")
+
+    def display_text_slide2(self, width, height):
+        """Displays text and image for Slide 2."""
+        self.canvas.delete("all")  # Clear previous elements before drawing new ones
+        self.draw_gradient(width, height, "#0d084d", "#0066cc")
+
+        # Upper text
+        self.canvas.create_text(width // 2, height // 10, text="Send the file via Bluetooth",
+                                font=("Arial", 60, "bold"), fill="white")
+
+        # Lower text (InstaPrintMachine in dark yellow)
+        self.canvas.create_text(width // 2, height - 190, text="Name: InstaPrintMachine",
+                                font=("Arial", 50, "bold"), fill="#FFD700")  # Dark yellow
+
+        self.canvas.create_text(width // 2, height - 100, text="Press any key after the file is sent.",
+                                font=("Arial", 30, "bold"), fill="white")
+
+        # Load and place the image for the second slide
+        image_path = "BLUETOOTH PIC.png"  # Replace with the actual path to your image
+        image_tk = self.load_image_slide2(image_path)
+
+        # Place the image on the canvas (centered)
+        image_x, image_y = width // 2, height // 2  # Position at the center of the slide
+        self.canvas.create_image(image_x, image_y, image=image_tk, anchor=tk.CENTER)
+
+        # Store the image reference to prevent garbage collection
+        self.image_reference = image_tk
+
+    def display_text_slide3(self, width, height):
+        """Displays text for Slide 3 (File Manager Confirmation)."""
+        self.canvas.delete("all")  # Clear previous elements before drawing new ones
+        self.draw_gradient(width, height, "#0d084d", "#0066cc")
+
+        # Upper text
+        self.canvas.create_text(width // 2, height // 10, text="File Upload Confirmation",
+                                font=("Arial", 60, "bold"), fill="white")
+
+        # Middle text (file name)
+        if self.file_path:
+            file_name = self.file_path.split("/")[-1]  # Extract file name from path
+            self.canvas.create_text(width // 2, height // 2, text=f"File: {file_name}",
+                                    font=("Arial", 40, "bold"), fill="#FFD700")
+        else:
+            self.canvas.create_text(width // 2, height // 2, text="No file uploaded.",
+                                    font=("Arial", 40, "bold"), fill="white")
+
+        # Lower text (instructions)
+        self.canvas.create_text(width // 2, height - 100, text="Press any key to continue.",
+                                font=("Arial", 30, "bold"), fill="white")
+
+    def next_slide(self, event=None):
+        """Moves to the next slide when a key is pressed."""
+        if self.current_slide == 1:
+            self.current_slide = 2  # Move to Slide 2
+        elif self.current_slide == 2:
+            # Define the upload folder
+            self.upload_folder = "C:\INSTAPRINTMACHINE"  # Change this to your preferred folder
+
+            # Ensure the folder exists
+            if not os.path.exists(self.upload_folder):
+                os.makedirs(self.upload_folder)
+
+            # Open file dialog starting in the specified folder
+            self.file_path = filedialog.askopenfilename(
+                title="Select a file to upload",
+                initialdir=self.upload_folder  # Set the default directory
+            )
+
+            if self.file_path:
+                messagebox.showinfo("File Uploaded", "File uploaded successfully!")
+                self.current_slide = 3  # Move to Slide 3
+        elif self.current_slide == 3:
+            self.current_slide = 4  # Move to Slide 4 (you can add this later)
+
+        self.draw_slide()  # Redraw with new slide
+
+
+# Create main window
+root = tk.Tk()
+app = GradientApp(root)
+root.mainloop()
