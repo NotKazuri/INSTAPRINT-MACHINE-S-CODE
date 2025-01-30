@@ -1,0 +1,258 @@
+import tkinter as tk
+import os
+from tkinter import filedialog, messagebox
+from PIL import Image, ImageTk, ImageDraw
+
+
+class GradientApp:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Gradient Slides with Tkinter")
+        self.root.attributes('-fullscreen', True)
+
+        # Initialize variables
+        self.current_slide = 1
+        self.file_path = None
+        self.size_var = tk.StringVar(value="short")
+        self.color_var = tk.StringVar(value="bw")
+        self.copies_var = tk.StringVar(value="1")
+
+        # Create canvas
+        self.canvas = tk.Canvas(root, highlightthickness=0)
+        self.canvas.pack(fill=tk.BOTH, expand=True)
+
+        # Load logo
+        self.logo_path = "InstaPrint Logo.png"
+        self.logo_tk = self.create_circular_logo(self.logo_path, size=500)
+
+        # Initial setup
+        self.draw_slide()
+        root.bind("<Key>", self.next_slide)
+        root.bind("<Escape>", lambda e: root.destroy())
+        self.canvas.bind("<Configure>", self.draw_slide)
+
+    # ==================== CORE METHODS ====================
+    def draw_gradient(self, width, height, start_color, end_color):
+        """Draws background gradient."""
+        self.canvas.delete("all")
+        r1, g1, b1 = self.canvas.winfo_rgb(start_color)
+        r2, g2, b2 = self.canvas.winfo_rgb(end_color)
+
+        for i in range(height):
+            r = int(r1 + (r2 - r1) * (i / height))
+            g = int(g1 + (g2 - g1) * (i / height))
+            b = int(b1 + (b2 - b1) * (i / height))
+            color = f'#{r // 256:02x}{g // 256:02x}{b // 256:02x}'
+            self.canvas.create_line(0, i, width, i, fill=color)
+
+    def draw_slide(self, event=None):
+        """Handles slide navigation."""
+        width, height = self.root.winfo_screenwidth(), self.root.winfo_screenheight()
+        self.draw_gradient(width, height, "#0d084d", "#0066cc")
+
+        if self.current_slide == 1:
+            self.place_logo(width, height)
+            self.display_text_slide1(width, height)
+        elif self.current_slide == 2:
+            self.display_text_slide2(width, height)
+        elif self.current_slide == 3:
+            self.display_text_slide3(width, height)
+        elif self.current_slide == 4:
+            self.display_text_slide4(width, height)
+        elif self.current_slide == 5:
+            self.display_text_slide5(width, height)
+
+        self.canvas.update_idletasks()
+
+    def next_slide(self, event=None):
+        """Handles slide transitions."""
+        if self.current_slide == 1:
+            self.current_slide = 2
+        elif self.current_slide == 2:
+            self.handle_file_upload()
+        elif self.current_slide == 3:
+            self.current_slide = 4
+        elif self.current_slide == 4:
+            self.current_slide = 5
+        elif self.current_slide == 5:
+            self.current_slide = 6  # Add printing logic here
+
+        self.draw_slide()
+
+    # ==================== SLIDE METHODS ====================
+    def display_text_slide1(self, width, height):
+        """Slide 1: Welcome screen."""
+        self.canvas.create_text(
+            width // 2, height - 150,
+            text="Press any key to continue!",
+            font=("Arial", 40, "bold"), fill="white"
+        )
+
+    def display_text_slide2(self, width, height):
+        """Slide 2: Bluetooth file transfer."""
+        # Text
+        self.canvas.create_text(width // 2, height // 10,
+                                text="Send the file via Bluetooth",
+                                font=("Arial", 60, "bold"), fill="white"
+                                )
+        self.canvas.create_text(width // 2, height - 190,
+                                text="Name: InstaPrintMachine",
+                                font=("Arial", 50, "bold"), fill="#FFD700"
+                                )
+        self.canvas.create_text(width // 2, height - 100,
+                                text="Press any key after the file is sent.",
+                                font=("Arial", 30, "bold"), fill="white"
+                                )
+
+        # Bluetooth image
+        image_tk = self.load_image_slide2("BLUETOOTH PIC.png")
+        self.canvas.create_image(width // 2, height // 2, image=image_tk)
+        self.image_reference = image_tk
+
+    def display_text_slide3(self, width, height):
+        """Slide 3: File confirmation."""
+        self.canvas.create_text(width // 2, height // 10,
+                                text="File Upload Confirmation",
+                                font=("Arial", 60, "bold"), fill="white"
+                                )
+
+        filename = os.path.basename(self.file_path) if self.file_path else "No file uploaded"
+        color = "#FFD700" if self.file_path else "white"
+        self.canvas.create_text(width // 2, height // 2,
+                                text=f"File: {filename}",
+                                font=("Arial", 40, "bold"), fill=color
+                                )
+
+        self.canvas.create_text(width // 2, height - 100,
+                                text="Press any key to continue.",
+                                font=("Arial", 30, "bold"), fill="white"
+                                )
+
+    def display_text_slide4(self, width, height):
+        """Slide 4: Paper settings."""
+        # Paper size
+        self.create_radio_group(
+            x=width // 2 - 200, y=height // 3,
+            label="Paper Size:", options=["Short", "Long"],
+            variable=self.size_var
+        )
+
+        # Color mode
+        self.create_radio_group(
+            x=width // 2 + 200, y=height // 3,
+            label="Color Mode:", options=["Black & White", "Colored"],
+            variable=self.color_var
+        )
+
+        # Copies
+        self.canvas.create_text(width // 2, height // 2 + 100,
+                                text="Number of Copies:",
+                                font=("Arial", 40, "bold"), fill="white"
+                                )
+        entry = tk.Entry(self.root, textvariable=self.copies_var,
+                         font=("Arial", 30), width=5)
+        self.canvas.create_window(width // 2, height // 2 + 160, window=entry)
+
+        # Proceed button
+        btn = tk.Button(self.root, text="Proceed to Payment",
+                        font=("Arial", 30, "bold"), bg="#FFD700",
+                        command=lambda: self.next_slide())
+        self.canvas.create_window(width // 2, height - 100, window=btn)
+
+    def display_text_slide5(self, width, height):
+        """Slide 5: Payment summary."""
+        # Calculate costs
+        page_count = self.get_page_count()
+        copies = int(self.copies_var.get())
+        total_pages = page_count * copies
+
+        cost_per_page = 0.10 if self.color_var.get() == "bw" else 0.20
+        if self.size_var.get() == "long":
+            cost_per_page += 0.05
+        total_cost = total_pages * cost_per_page
+
+        # Display details
+        details = [
+            f"File: {os.path.basename(self.file_path)}",
+            f"Size: {self.size_var.get().capitalize()}",
+            f"Color: {self.color_var.get().capitalize()}",
+            f"Copies: {copies}",
+            f"Total Pages: {total_pages}",
+            f"Total Cost: ${total_cost:.2f}"
+        ]
+
+        y = height // 3
+        for line in details:
+            self.canvas.create_text(width // 2, y,
+                                    text=line, font=("Arial", 30), fill="white"
+                                    )
+            y += 50
+
+        # Payment button
+        btn = tk.Button(self.root, text="Confirm Payment",
+                        font=("Arial", 30, "bold"), bg="#FFD700",
+                        command=lambda: self.next_slide())
+        self.canvas.create_window(width // 2, height - 100, window=btn)
+
+    # ==================== HELPER METHODS ====================
+    def create_circular_logo(self, image_path, size=400):
+        """Creates circular logo image."""
+        img = Image.open(image_path).convert("RGBA").resize((size, size))
+        mask = Image.new("L", (size, size), 0)
+        ImageDraw.Draw(mask).ellipse((0, 0, size, size), fill=250)
+        circular_img = Image.new("RGBA", (size, size))
+        circular_img.paste(img, (0, 0), mask)
+        return ImageTk.PhotoImage(circular_img)
+
+    def load_image_slide2(self, image_path, size=(500, 500)):
+        """Loads image for Slide 2."""
+        return ImageTk.PhotoImage(Image.open(image_path).resize(size))
+
+    def create_radio_group(self, x, y, label, options, variable):
+        """Creates radio button group."""
+        self.canvas.create_text(x, y,
+                                text=label, font=("Arial", 40, "bold"), fill="white"
+                                )
+        for i, option in enumerate(options):
+            rb = tk.Radiobutton(
+                self.root, text=option,
+                variable=variable,
+                value=option.lower().replace(" & ", "").replace(" ", ""),
+                font=("Arial", 30), bg="#0d084d", fg="white"
+            )
+            self.canvas.create_window(x, y + 60 + (i * 60), window=rb)
+
+    def get_page_count(self):
+        """Returns number of pages in PDF file."""
+        if self.file_path and self.file_path.endswith(".pdf"):
+            from PyPDF2 import PdfReader
+            with open(self.file_path, "rb") as f:
+                return len(PdfReader(f).pages)
+        return 1
+
+    def handle_file_upload(self):
+        """Handles file upload logic."""
+        upload_folder = "C:\\INSTAPRINTMACHINE"
+        if not os.path.exists(upload_folder):
+            os.makedirs(upload_folder)
+
+        self.file_path = filedialog.askopenfilename(
+            title="Select a file to upload",
+            initialdir=upload_folder
+        )
+        if self.file_path:
+            messagebox.showinfo("Success", "File uploaded successfully!")
+            self.current_slide = 3
+
+    def place_logo(self, width, height):
+        """Places logo on Slide 1."""
+        self.canvas.create_image(
+            width // 2, height // 2 - 50,
+            image=self.logo_tk, anchor=tk.CENTER
+        )
+
+
+# Run application
+root = tk.Tk()
+app = GradientApp(root)
+root.mainloop()
