@@ -1,0 +1,17 @@
+#PROMPT
+
+Hello, so we're making a automatic printing machine. It's basically like a vending machine. When a user approach the machine, there's an app going to pop up and which is going to be in order:
+
+1. Starting up screen of the machine (slide 1).
+2. User is advised to send the file through bluetooth into the machine  (slide 2).
+3. User now will choose what's the paper's settings are going to be. The size (long or short bond paper), colored or black and white paper, how many is the paper going to be printed or copies  (slide 3).
+4. User's paper's setting will now be displayed and how much money does the user need to pay. ( slide 4)
+5. User's paper is now printed. (slide 5)
+
+Also, we're going to use a microcontroller this machine, since user has to pay for the paper. There are several hardwares that we need to connect also.
+
+In conclusion, that's the whole project that I'm going to do. 
+
+My problem is I don't have any knowledge when it comes to programming. Basically, I want you to be my mentor when it comes to doing this project. 
+
+So every question that I'm going to ask, please provide me a right answer.
