@@ -1,0 +1,328 @@
+import tkinter as tk
+from tkinter import ttk, filedialog, messagebox
+from PIL import Image, ImageTk, ImageDraw
+import os
+
+class GradientApp:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("InstaPrint Machine")
+        self.root.attributes('-fullscreen', True)
+
+        # Initialize variables
+        self.current_slide = 1
+        self.file_path = None
+        self.size_var = tk.StringVar(value="short")
+        self.color_var = tk.StringVar(value="grayscale")
+        self.print_option_var = tk.StringVar(value="whole_file")
+        self.copies_var = tk.StringVar(value="1")
+
+        # Price configuration
+        self.prices = {
+            "short": {"grayscale": 2.00, "color": 4.00},
+            "long": {"grayscale": 3.00, "color": 4.00}
+        }
+
+        # Create canvas
+        self.canvas = tk.Canvas(root, highlightthickness=0)
+        self.canvas.pack(fill=tk.BOTH, expand=True)
+
+        # Load logo
+        self.logo_path = "InstaPrint Logo.png"
+        self.logo_tk = self.create_circular_logo(self.logo_path, size=500)
+
+        # Initial setup
+        self.draw_slide()
+        self.root.bind("<Escape>", lambda e: root.destroy())
+        self.canvas.bind("<Configure>", self.draw_slide)
+
+    def create_circular_logo(self, image_path, size=400):
+        """Creates circular logo image."""
+        img = Image.open(image_path).convert("RGBA").resize((size, size))
+        mask = Image.new("L", (size, size), 0)
+        ImageDraw.Draw(mask).ellipse((0, 0, size, size), fill=250)
+        circular_img = Image.new("RGBA", (size, size))
+        circular_img.paste(img, (0, 0), mask)
+        return ImageTk.PhotoImage(circular_img)
+
+    def draw_gradient(self, width, height, start_color, end_color):
+        """Draws background gradient."""
+        self.canvas.delete("all")
+        r1, g1, b1 = self.canvas.winfo_rgb(start_color)
+        r2, g2, b2 = self.canvas.winfo_rgb(end_color)
+
+        for i in range(height):
+            r = int(r1 + (r2 - r1) * (i / height))
+            g = int(g1 + (g2 - g1) * (i / height))
+            b = int(b1 + (b2 - b1) * (i / height))
+            color = f'#{r // 256:02x}{g // 256:02x}{b // 256:02x}'
+            self.canvas.create_line(0, i, width, i, fill=color)
+
+    def draw_slide(self, event=None):
+        """Handles slide navigation."""
+        width, height = self.root.winfo_screenwidth(), self.root.winfo_screenheight()
+        self.draw_gradient(width, height, "#0d084d", "#0066cc")
+
+        if self.current_slide == 1:
+            self.display_text_slide1(width, height)
+        elif self.current_slide == 2:
+            self.display_text_slide2(width, height)
+        elif self.current_slide == 3:
+            self.display_text_slide3(width, height)
+        elif self.current_slide == 4:
+            self.display_text_slide4(width, height)
+        elif self.current_slide == 5:
+            self.display_text_slide5(width, height)
+
+        self.canvas.update_idletasks()
+
+    def next_slide(self):
+        """Handles slide transitions."""
+        if self.current_slide == 1:
+            self.current_slide = 2
+        elif self.current_slide == 2:
+            self.handle_file_upload()
+        elif self.current_slide == 3:
+            self.current_slide = 4
+        elif self.current_slide == 4:
+            self.current_slide = 5
+        elif self.current_slide == 5:
+            self.current_slide = 6  # Add printing logic here
+
+        self.draw_slide()
+
+    def previous_slide(self):
+        """Handles going back to the previous slide."""
+        if self.current_slide > 1:
+            self.current_slide -= 1
+            self.draw_slide()
+
+    def display_text_slide1(self, width, height):
+        """Welcome screen with button"""
+        self.place_logo(width, height)
+
+        # Continue button
+        btn = tk.Button(self.root, text="Start",
+                        font=("Arial", 30, "bold"), bg="#FFD700",
+                        command=self.next_slide)
+        self.canvas.create_window(width // 2, height - 100, window=btn)
+
+    def display_text_slide2(self, width, height):
+        """Bluetooth file transfer screen"""
+        self.canvas.create_text(width // 2, height // 6,
+                                text="Send the file via Bluetooth",
+                                font=("Arial", 60, "bold"), fill="white")
+
+        # Smaller Bluetooth image (300x300)
+        image_tk = self.load_image_slide2("BLUETOOTH PIC.png", size=(460, 460))
+        self.canvas.create_image(width // 2, height // 2, image=image_tk)
+        self.image_reference = image_tk
+
+        # Continue button
+        btn = tk.Button(self.root, text="Continue",
+                        font=("Arial", 30, "bold"), bg="#FFD700",
+                        command=self.next_slide)
+        self.canvas.create_window(width // 2, height - 100, window=btn)
+
+    def display_text_slide3(self, width, height):
+        """File confirmation screen"""
+        filename = os.path.basename(self.file_path) if self.file_path else "No file uploaded"
+        color = "#FFD700" if self.file_path else "white"
+
+        # Add "File:" label above filename
+        self.canvas.create_text(width // 2, height // 2 - 40,
+                                text="File:",
+                                font=("Arial", 40, "bold"), fill="white")
+
+        self.canvas.create_text(width // 2, height // 10 + 60,
+                                text="FILE CHOSEN:",
+                                font=("Arial", 75, "bold"), fill=color)
+
+        self.canvas.create_text(width // 2, height // 2 + 20,
+                                text=filename,
+                                font=("Arial", 40, "bold"), fill="white")
+
+        # Continue button
+        btn = tk.Button(self.root, text="Continue",
+                        font=("Arial", 30, "bold"), bg="#FFD700",
+                        command=self.next_slide)
+        self.canvas.create_window(width // 2, height - 100, window=btn)
+
+    def display_text_slide4(self, width, height):
+        """Paper settings screen"""
+        # Left column (COLOR)
+        self.canvas.create_text(width // 2 - 350, height // 3 - 145,
+                                text="COLOR:", font=("Arial", 50, "bold"), fill="white", anchor=tk.W)
+
+        color_options = [
+            ("Grayscale", "grayscale", "₱1.00 per page"),
+            ("Colored", "color", "₱4.00 per page")
+        ]
+        for i, (text, value, price) in enumerate(color_options):
+            btn = tk.Radiobutton(
+                self.root, text=f"{text}\n{price}",
+                variable=self.color_var, value=value,
+                font=("Arial", 25), bg="#0d084d", fg="white",
+                selectcolor="#1E90FF", indicatoron=0,
+                width=15, height=2
+            )
+            self.canvas.create_window(width // 2 - 350, height // 3 - 40 + (i * 120),
+                                      window=btn, anchor=tk.W)
+
+        # Right column (SIZE)
+        self.canvas.create_text(width // 2 + 50, height // 3 - 145,
+                                text="SIZE:", font=("Arial", 50, "bold"), fill="white", anchor=tk.W)
+
+        size_options = [
+            ("Short", "short", "₱2.00 per page"),
+            ("Long", "long", "₱3.00 per page")
+        ]
+        for i, (text, value, price) in enumerate(size_options):
+            btn = tk.Radiobutton(
+                self.root, text=f"{text}\n{price}",
+                variable=self.size_var, value=value,
+                font=("Arial", 25), bg="#0d084d", fg="white",
+                selectcolor="#1E90FF", indicatoron=0,
+                width=15, height=2
+            )
+            self.canvas.create_window(width // 2 + 50, height // 3 - 40 + (i * 120),
+                                      window=btn, anchor=tk.W)
+
+        # Print Options (Centered bottom)
+        self.canvas.create_text(width // 2, height - 480,
+                                text="PRINT OPTIONS:",
+                                font=("Arial", 50, "bold"), fill="white")
+
+        print_options = [
+            ("Print Whole File", "whole_file"),
+            ("Specify Copies", "copies")
+        ]
+        for i, (text, value) in enumerate(print_options):
+            btn = tk.Radiobutton(
+                self.root, text=text,
+                variable=self.print_option_var, value=value,
+                font=("Arial", 25), bg="#0d084d", fg="white",
+                selectcolor="#1E90FF", indicatoron=0,
+                width=15, height=2,
+                command=self.toggle_copies_field
+            )
+            self.canvas.create_window(width // 2 - 150 + (i * 300), height - 380,
+                                      window=btn, anchor=tk.CENTER)
+
+        self.copies_entry = tk.Entry(self.root, textvariable=self.copies_var,
+                                     font=("Arial", 25), width=5, state=tk.DISABLED)
+        self.canvas.create_window(width // 2, height - 280, window=self.copies_entry)
+
+        # Proceed to Payment button
+        btn = tk.Button(self.root, text="Proceed to Payment",
+                        font=("Arial", 30, "bold"), bg="#FFD700",
+                        command=self.next_slide)
+        self.canvas.create_window(width // 2 + 150, height - 100, window=btn)
+
+        # Back button
+        back_btn = tk.Button(self.root, text="Back",
+                             font=("Arial", 30, "bold"), bg="#FFD700",
+                             command=self.previous_slide)
+        self.canvas.create_window(width // 2 - 150, height - 100, window=back_btn)
+
+    def toggle_copies_field(self):
+        """Enables/disables copies input based on selection"""
+        if self.print_option_var.get() == "copies":
+            self.copies_entry.config(state=tk.NORMAL)
+        else:
+            self.copies_entry.config(state=tk.DISABLED)
+            self.copies_var.set("1")
+
+    def display_text_slide5(self, width, height):
+        """Payment summary screen with table"""
+        total_cost = self.calculate_cost()
+        page_count = self.get_page_count()
+        copies = int(self.copies_var.get()) if self.print_option_var.get() == "copies" else 1
+
+        # Create a table using ttk.Treeview
+        table = ttk.Treeview(self.root, columns=("Setting", "Value"), show="headings", height=8)
+        table.heading("Setting", text="Setting", anchor=tk.CENTER)
+        table.heading("Value", text="Value", anchor=tk.CENTER)
+        table.column("Setting", width=400, anchor=tk.CENTER)
+        table.column("Value", width=400, anchor=tk.CENTER)
+
+        # Style the table
+        style = ttk.Style()
+        style.configure("Treeview", font=("Arial", 20), rowheight=40, background="#0d084d", foreground="white")
+        style.configure("Treeview.Heading", font=("Arial", 25, "bold"), background="#1E90FF", foreground="black")
+        style.map("Treeview", background=[("selected", "#0066cc")])
+
+        # Insert data into the table
+        table.insert("", "end", values=("File", os.path.basename(self.file_path)))
+        table.insert("", "end", values=("Size", self.size_var.get().capitalize()))
+        table.insert("", "end", values=("Color", self.color_var.get().capitalize()))
+        table.insert("", "end", values=("Print Option", "Copies" if self.print_option_var.get() == "copies" else "Whole File"))
+        table.insert("", "end", values=("Pages per Copy", page_count))
+        table.insert("", "end", values=("Total Copies", copies))
+        table.insert("", "end", values=("Total Pages", page_count * copies))
+        table.insert("", "end", values=("Total Cost", f"₱{total_cost:.2f}"))
+
+        # Place the table on the canvas
+        self.canvas.create_window(width // 2, height // 2 - 50, window=table)
+
+        # Confirm Payment button
+        btn = tk.Button(self.root, text="Confirm Payment",
+                        font=("Arial", 30, "bold"), bg="#FFD700",
+                        command=self.next_slide)
+        self.canvas.create_window(width // 2 + 150, height - 100, window=btn)
+
+        # Back button
+        back_btn = tk.Button(self.root, text="Back",
+                             font=("Arial", 30, "bold"), bg="#FFD700",
+                             command=self.previous_slide)
+        self.canvas.create_window(width // 2 - 150, height - 100, window=back_btn)
+
+    def load_image_slide2(self, image_path, size=(300, 300)):
+        """Loads Bluetooth image with specified size"""
+        return ImageTk.PhotoImage(Image.open(image_path).resize(size))
+
+    def get_page_count(self):
+        """Counts PDF pages"""
+        if self.file_path and self.file_path.endswith(".pdf"):
+            from PyPDF2 import PdfReader
+            with open(self.file_path, "rb") as f:
+                return len(PdfReader(f).pages)
+        return 1
+
+    def handle_file_upload(self):
+        """Handles file upload"""
+        upload_folder = "C:\INSTAPRINTMACHINE"
+        if not os.path.exists(upload_folder):
+            os.makedirs(upload_folder)
+
+        self.file_path = filedialog.askopenfilename(
+            title="Select a file to upload",
+            initialdir=upload_folder
+        )
+        if self.file_path:
+            messagebox.showinfo("Success", "File uploaded successfully!")
+            self.current_slide = 3
+
+    def place_logo(self, width, height):
+        """Positions logo on Slide 1"""
+        self.canvas.create_image(width // 2, height // 2 - 50,
+                                 image=self.logo_tk, anchor=tk.CENTER)
+
+    def calculate_cost(self):
+        """Calculates total cost based on selections"""
+        try:
+            pages = self.get_page_count()
+            copies = int(self.copies_var.get()) if self.print_option_var.get() == "copies" else 1
+            size = self.size_var.get()
+            color = self.color_var.get()
+
+            price_per_page = self.prices[size][color]
+            total_pages = pages * copies
+            return total_pages * price_per_page
+        except:
+            return 0.00
+
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = GradientApp(root)
+    root.mainloop()
