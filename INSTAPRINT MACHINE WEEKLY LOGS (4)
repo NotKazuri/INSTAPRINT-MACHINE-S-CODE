@@ -13,14 +13,20 @@ class GradientApp:
         self.current_slide = 1
         self.file_path = None
         self.size_var = tk.StringVar(value="short")
-        self.color_var = tk.StringVar(value="grayscale")
+        self.color_var = tk.StringVar(value="black_and_white")
         self.print_option_var = tk.StringVar(value="whole_file")
         self.copies_var = tk.StringVar(value="1")
 
         # Price configuration
         self.prices = {
-            "short": {"grayscale": 2.00, "color": 4.00},
-            "long": {"grayscale": 3.00, "color": 4.00}
+            "size": {
+                "short": 1.00,
+                "long": 2.00
+            },
+            "color": {
+                "black_and_white": 2.00,
+                "color": 3.00
+            }
         }
 
         # Create canvas
@@ -155,8 +161,8 @@ class GradientApp:
                                 text="COLOR:", font=("Arial", 50, "bold"), fill="white", anchor=tk.W)
 
         color_options = [
-            ("Grayscale", "grayscale", "₱1.00 per page"),
-            ("Colored", "color", "₱4.00 per page")
+            ("Black and White", "black_and_white", "₱2.00 per page"),
+            ("Colored", "color", "₱3.00 per page")
         ]
         for i, (text, value, price) in enumerate(color_options):
             btn = tk.Radiobutton(
@@ -174,8 +180,8 @@ class GradientApp:
                                 text="SIZE:", font=("Arial", 50, "bold"), fill="white", anchor=tk.W)
 
         size_options = [
-            ("Short", "short", "₱2.00 per page"),
-            ("Long", "long", "₱3.00 per page")
+            ("Short", "short", "₱1.00 per page"),
+            ("Long", "long", "₱2.00 per page")
         ]
         for i, (text, value, price) in enumerate(size_options):
             btn = tk.Radiobutton(
@@ -254,8 +260,8 @@ class GradientApp:
 
         # Insert data into the table
         table.insert("", "end", values=("File", os.path.basename(self.file_path)))
-        table.insert("", "end", values=("Size", self.size_var.get().capitalize()))
-        table.insert("", "end", values=("Color", self.color_var.get().capitalize()))
+        table.insert("", "end", values=("Size", f"{self.size_var.get().capitalize()} (₱{self.prices['size'][self.size_var.get()]:.2f})"))
+        table.insert("", "end", values=("Color", f"{self.color_var.get().replace('_', ' ').title()} (₱{self.prices['color'][self.color_var.get()]:.2f})"))
         table.insert("", "end", values=("Print Option", "Copies" if self.print_option_var.get() == "copies" else "Whole File"))
         table.insert("", "end", values=("Pages per Copy", page_count))
         table.insert("", "end", values=("Total Copies", copies))
@@ -313,12 +319,9 @@ class GradientApp:
         try:
             pages = self.get_page_count()
             copies = int(self.copies_var.get()) if self.print_option_var.get() == "copies" else 1
-            size = self.size_var.get()
-            color = self.color_var.get()
-
-            price_per_page = self.prices[size][color]
-            total_pages = pages * copies
-            return total_pages * price_per_page
+            size_price = self.prices['size'][self.size_var.get()]
+            color_price = self.prices['color'][self.color_var.get()]
+            return (size_price + color_price) * pages * copies
         except:
             return 0.00
 
