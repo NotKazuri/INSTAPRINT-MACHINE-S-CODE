@@ -5,6 +5,7 @@ import os
 import subprocess
 import shutil
 import psutil
+import urllib.parse
 
 class GradientApp:
     def __init__(self, root):
@@ -19,34 +20,30 @@ class GradientApp:
         self.color_var = tk.StringVar(value="black_and_white")
         self.print_option_var = tk.StringVar(value="whole_file")
         self.copies_var = tk.StringVar(value="1")
+        # Flag to ensure the USB file dialog is opened only once.
+        self.usb_dialog_opened = False
 
         # Price configuration
         self.prices = {
-            "size": {
-                "short": 1.00,
-                "long": 2.00
-            },
-            "color": {
-                "black_and_white": 2.00,
-                "color": 3.00
-            }
+            "size": {"short": 1.00, "long": 2.00},
+            "color": {"black_and_white": 2.00, "color": 3.00}
         }
 
-        # Create canvas to draw on (used for the gradient background and widget placement)
+        # Create canvas
         self.canvas = tk.Canvas(root, highlightthickness=0)
         self.canvas.pack(fill=tk.BOTH, expand=True)
 
-        # Load logo (assumes "InstaPrint Logo.png" is in the same folder)
+        # Load logo
         self.logo_path = "InstaPrint Logo.png"
         self.logo_tk = self.create_circular_logo(self.logo_path, size=500)
 
-        # Initial setup: draw the first slide
+        # Initial setup
         self.draw_slide()
         self.root.bind("<Escape>", lambda e: root.destroy())
         self.canvas.bind("<Configure>", self.draw_slide)
 
     def create_circular_logo(self, image_path, size=400):
-        """Creates a circular version of the logo image."""
+        """Creates a circular logo image."""
         img = Image.open(image_path).convert("RGBA").resize((size, size))
         mask = Image.new("L", (size, size), 0)
         ImageDraw.Draw(mask).ellipse((0, 0, size, size), fill=250)
@@ -55,7 +52,7 @@ class GradientApp:
         return ImageTk.PhotoImage(circular_img)
 
     def draw_gradient(self, width, height, start_color, end_color):
-        """Draws a smooth gradient on the canvas."""
+        """Draws a vertical background gradient."""
         self.canvas.delete("all")
         r1, g1, b1 = self.canvas.winfo_rgb(start_color)
         r2, g2, b2 = self.canvas.winfo_rgb(end_color)
@@ -67,131 +64,121 @@ class GradientApp:
             self.canvas.create_line(0, i, width, i, fill=color)
 
     def draw_slide(self, event=None):
-        """Handles redrawing the current slide based on self.current_slide."""
+        """Handles slide navigation."""
         width, height = self.root.winfo_screenwidth(), self.root.winfo_screenheight()
-        # Use new gradient colors for the updated design
-        self.draw_gradient(width, height, "#1A237E", "#64B5F6")
+        self.draw_gradient(width, height, "#0d084d", "#0066cc")
         if self.current_slide == 1:
-            self.display_slide1(width, height)
+            self.display_text_slide1(width, height)
         elif self.current_slide == 2:
-            self.display_slide2(width, height)
+            self.display_text_slide2(width, height)
         elif self.current_slide == 3:
-            self.display_slide3(width, height)
+            self.display_text_slide3(width, height)
         elif self.current_slide == 4:
-            self.display_slide4(width, height)
+            self.display_text_slide4(width, height)
         elif self.current_slide == 5:
-            self.display_slide5(width, height)
+            self.display_text_slide5(width, height)
         self.canvas.update_idletasks()
 
     def next_slide(self):
-        """Handles transitions between slides."""
+        """Advances to the next slide."""
         if self.current_slide == 1:
             self.current_slide = 2
         elif self.current_slide == 2:
-            # Transition only if a file has been uploaded or transferred via USB.
-            if self.file_path:
-                self.current_slide = 3
+            # In Slide 2, file upload or USB transfer triggers the transition.
+            pass
         elif self.current_slide == 3:
             self.current_slide = 4
         elif self.current_slide == 4:
             self.current_slide = 5
         elif self.current_slide == 5:
-            self.current_slide = 6  # Future printing logic can be added here.
+            self.current_slide = 6  # (Printing logic can be added here)
         self.draw_slide()
 
     def previous_slide(self):
-        """Handles going back to the previous slide."""
+        """Goes back to the previous slide."""
         if self.current_slide > 1:
             self.current_slide -= 1
             self.draw_slide()
 
-    def display_slide1(self, width, height):
-        """Slide 1: Welcome screen with logo and start button."""
+    def display_text_slide1(self, width, height):
+        """Welcome screen with logo and Start button."""
         self.place_logo(width, height)
-        btn = tk.Button(self.root, text="Start",
-                        font=("Helvetica", 30, "bold"), bg="#FFD700",
-                        command=self.next_slide)
+        btn = tk.Button(self.root, text="Start", font=("Arial", 30, "bold"), bg="#FFD700", command=self.next_slide)
         self.canvas.create_window(width // 2, height - 100, window=btn)
 
     def open_bluetooth_settings(self):
-        """Opens the system's Bluetooth settings."""
+        """Opens the system's Bluetooth settings (Windows, macOS, Linux)."""
         try:
-            if os.name == 'nt':  # Windows
+            if os.name == 'nt':
                 subprocess.run(["start", "ms-settings:bluetooth"], shell=True)
-            elif os.name == 'posix':  # macOS/Linux
-                if os.uname().sysname == "Darwin":  # macOS
+            elif os.name == 'posix':
+                if os.uname().sysname == "Darwin":
                     subprocess.run(["open", "/System/Library/PreferencePanes/Bluetooth.prefPane"])
-                else:  # Linux
+                else:
                     subprocess.run(["bluetoothctl"])
         except Exception as e:
             messagebox.showerror("Error", f"Failed to open Bluetooth settings: {str(e)}")
 
-    def display_slide2(self, width, height):
-        """Slide 2: File send method selection screen with file and USB transfer options."""
+    def display_text_slide2(self, width, height):
+        """File send method selection screen."""
         self.canvas.delete("all")
-        self.draw_gradient(width, height, "#1A237E", "#64B5F6")
+        self.draw_gradient(width, height, "#0d084d", "#0066cc")
+        title = tk.Label(self.root, text="Send Your File", font=("Arial", 70, "bold"), bg="#0d084d", fg="white")
+        self.canvas.create_window(width // 2, height // 8, window=title)
+        instruction = tk.Label(self.root, text="Choose how you want to send your file", font=("Arial", 30), bg="#0d084d", fg="white")
+        self.canvas.create_window(width // 2, height // 4, window=instruction)
+        device_name = tk.Label(self.root, text="Device Name: INSTAPRINT", font=("Arial", 25, "bold"), bg="#0d084d", fg="#FFD700")
+        self.canvas.create_window(width // 2, height // 3.4, window=device_name)
 
-        # Title and instruction labels with updated design
-        title = tk.Label(self.root, text="Send Your File", font=("Helvetica", 60, "bold"), bg="#1A237E", fg="white")
-        self.canvas.create_window(width // 2, height * 0.1, window=title)
-        instruction = tk.Label(self.root, text="Choose how you want to send your file", font=("Helvetica", 28), bg="#1A237E", fg="white")
-        self.canvas.create_window(width // 2, height * 0.2, window=instruction)
-        device_name = tk.Label(self.root, text="Device Name: INSTAPRINT", font=("Helvetica", 22, "bold"), bg="#1A237E", fg="#FFD700")
-        self.canvas.create_window(width // 2, height * 0.3, window=device_name)
-
-        # Left group: Sending methods ("Send Via:")
+        # Left group: Sending methods
         left_x = width // 3
-        group_y = height * 0.6
-        send_via_label = tk.Label(self.root, text="Send Via:", font=("Helvetica", 36, "bold"), bg="#1A237E", fg="white")
-        self.canvas.create_window(left_x, group_y - 150, window=send_via_label)
-        bt_button = tk.Button(self.root, text="Bluetooth", font=("Helvetica", 24, "bold"), bg="#FFD700",
-                              command=lambda: self.select_method("Bluetooth"))
-        self.canvas.create_window(left_x, group_y - 50, window=bt_button, width=220, height=60)
-        usb_button = tk.Button(self.root, text="USB", font=("Helvetica", 24, "bold"), bg="#FFD700",
-                               command=lambda: self.select_method("USB"))
-        self.canvas.create_window(left_x, group_y + 30, window=usb_button, width=220, height=60)
-
-        # Right group: File selection ("Choose File:")
         right_x = (2 * width) // 3
-        choose_file_label = tk.Label(self.root, text="Choose File:", font=("Helvetica", 36, "bold"), bg="#1A237E", fg="white")
-        self.canvas.create_window(right_x, group_y - 150, window=choose_file_label)
-        upload_button = tk.Button(self.root, text="Upload File", font=("Helvetica", 24, "bold"), bg="#FFD700",
-                                  command=self.handle_file_upload)
-        self.canvas.create_window(right_x, group_y - 50, window=upload_button, width=220, height=60)
+        group_y = height - 350
+        send_via_label = tk.Label(self.root, text="Send Via:", font=("Arial", 40, "bold"), bg="#0d084d", fg="white")
+        self.canvas.create_window(left_x, group_y - 230, window=send_via_label)
+        bt_button = tk.Button(self.root, text="Bluetooth", font=("Arial", 25, "bold"), bg="#FFD700",
+                              command=lambda: self.select_method("Bluetooth"))
+        self.canvas.create_window(left_x, group_y - 100, window=bt_button, width=200)
+        usb_button = tk.Button(self.root, text="USB", font=("Arial", 25, "bold"), bg="#FFD700",
+                               command=lambda: self.select_method("USB"))
+        self.canvas.create_window(left_x, group_y - 20, window=usb_button, width=200)
 
-        # Continue button (remains disabled until a file is chosen)
-        self.continue_btn = tk.Button(self.root, text="Continue", font=("Helvetica", 24, "bold"), bg="#FFD700",
+        # Right group: File selection (for manual upload)
+        choose_file_label = tk.Label(self.root, text="Choose File:", font=("Arial", 40, "bold"), bg="#0d084d", fg="white")
+        self.canvas.create_window(right_x, group_y - 230, window=choose_file_label)
+        upload_button = tk.Button(self.root, text="Upload File", font=("Arial", 30, "bold"), bg="#FFD700",
+                                  command=self.handle_file_upload)
+        self.canvas.create_window(right_x, group_y - 70, window=upload_button, width=230)
+
+        # Continue button (disabled until a file is chosen)
+        self.continue_btn = tk.Button(self.root, text="Continue", font=("Arial", 30, "bold"), bg="#FFD700",
                                       state=tk.DISABLED, command=self.next_slide)
-        self.canvas.create_window(width // 2, height - 80, window=self.continue_btn)
+        self.canvas.create_window(width // 2, height - 75, window=self.continue_btn)
 
     def select_method(self, method):
-        """Handles the selection of file sending method."""
+        """Calls the appropriate method based on user selection."""
         if method == "Bluetooth":
             self.open_bluetooth_settings()
         elif method == "USB":
             self.handle_usb_transfer()
 
-    def display_slide3(self, width, height):
-        """Slide 3: File confirmation screen."""
-        self.canvas.delete("all")
-        self.draw_gradient(width, height, "#1A237E", "#64B5F6")
+    def display_text_slide3(self, width, height):
+        """File confirmation screen."""
         filename = os.path.basename(self.file_path) if self.file_path else "No file uploaded"
         color = "#FFD700" if self.file_path else "white"
-        file_label = tk.Label(self.root, text="FILE CHOSEN:", font=("Helvetica", 70, "bold"), bg="#1A237E", fg=color)
-        self.canvas.create_window(width // 2, height * 0.2, window=file_label)
-        name_label = tk.Label(self.root, text=filename, font=("Helvetica", 40, "bold"), bg="#1A237E", fg="white")
-        self.canvas.create_window(width // 2, height * 0.4, window=name_label)
-        btn = tk.Button(self.root, text="Continue", font=("Helvetica", 24, "bold"), bg="#FFD700",
-                        command=self.next_slide)
-        self.canvas.create_window(width // 2, height - 80, window=btn)
+        self.canvas.create_text(width // 2, height // 2 - 40,
+                                text="File:", font=("Arial", 40, "bold"), fill="white")
+        self.canvas.create_text(width // 2, height // 10 + 60,
+                                text="FILE CHOSEN:", font=("Arial", 75, "bold"), fill=color)
+        self.canvas.create_text(width // 2, height // 2 + 20,
+                                text=filename, font=("Arial", 40, "bold"), fill="white")
+        btn = tk.Button(self.root, text="Continue", font=("Arial", 30, "bold"), bg="#FFD700", command=self.next_slide)
+        self.canvas.create_window(width // 2, height - 100, window=btn)
 
-    def display_slide4(self, width, height):
-        """Slide 4: Paper settings screen with options for color, size, and print options."""
-        self.canvas.delete("all")
-        self.draw_gradient(width, height, "#1A237E", "#64B5F6")
-        # COLOR selection
-        color_label = tk.Label(self.root, text="COLOR:", font=("Helvetica", 48, "bold"), bg="#1A237E", fg="white")
-        self.canvas.create_window(width // 2 - 350, height * 0.3, window=color_label, anchor=tk.W)
+    def display_text_slide4(self, width, height):
+        """Paper settings screen."""
+        self.canvas.create_text(width // 2 - 350, height // 3 - 145,
+                                text="COLOR:", font=("Arial", 50, "bold"), fill="white", anchor=tk.W)
         color_options = [
             ("Black and White", "black_and_white", "₱2.00 per page"),
             ("Colored", "color", "₱3.00 per page")
@@ -199,14 +186,12 @@ class GradientApp:
         for i, (text, value, price) in enumerate(color_options):
             btn = tk.Radiobutton(self.root, text=f"{text}\n{price}",
                                  variable=self.color_var, value=value,
-                                 font=("Helvetica", 24), bg="#1A237E", fg="white",
+                                 font=("Arial", 25), bg="#0d084d", fg="white",
                                  selectcolor="#0099ff", indicatoron=0,
                                  width=15, height=2)
-            self.canvas.create_window(width // 2 - 350, height * 0.3 + 80 + (i * 120),
-                                      window=btn, anchor=tk.W)
-        # SIZE selection
-        size_label = tk.Label(self.root, text="SIZE:", font=("Helvetica", 48, "bold"), bg="#1A237E", fg="white")
-        self.canvas.create_window(width // 2 + 50, height * 0.3, window=size_label, anchor=tk.W)
+            self.canvas.create_window(width // 2 - 350, height // 3 - 40 + (i * 120), window=btn, anchor=tk.W)
+        self.canvas.create_text(width // 2 + 50, height // 3 - 145,
+                                text="SIZE:", font=("Arial", 50, "bold"), fill="white", anchor=tk.W)
         size_options = [
             ("Short", "short", "₱1.00 per page"),
             ("Long", "long", "₱2.00 per page")
@@ -214,14 +199,12 @@ class GradientApp:
         for i, (text, value, price) in enumerate(size_options):
             btn = tk.Radiobutton(self.root, text=f"{text}\n{price}",
                                  variable=self.size_var, value=value,
-                                 font=("Helvetica", 24), bg="#1A237E", fg="white",
+                                 font=("Arial", 25), bg="#0d084d", fg="white",
                                  selectcolor="#0099ff", indicatoron=0,
                                  width=15, height=2)
-            self.canvas.create_window(width // 2 + 50, height * 0.3 + 80 + (i * 120),
-                                      window=btn, anchor=tk.W)
-        # PRINT OPTIONS
-        print_label = tk.Label(self.root, text="PRINT OPTIONS:", font=("Helvetica", 48, "bold"), bg="#1A237E", fg="white")
-        self.canvas.create_window(width // 2, height - 500, window=print_label)
+            self.canvas.create_window(width // 2 + 50, height // 3 - 40 + (i * 120), window=btn, anchor=tk.W)
+        self.canvas.create_text(width // 2, height - 480,
+                                text="PRINT OPTIONS:", font=("Arial", 50, "bold"), fill="white")
         print_options = [
             ("Print Whole File", "whole_file"),
             ("Specify Copies", "copies")
@@ -229,51 +212,41 @@ class GradientApp:
         for i, (text, value) in enumerate(print_options):
             btn = tk.Radiobutton(self.root, text=text,
                                  variable=self.print_option_var, value=value,
-                                 font=("Helvetica", 24), bg="#1A237E", fg="white",
+                                 font=("Arial", 25), bg="#0d084d", fg="white",
                                  selectcolor="#0099ff", indicatoron=0,
                                  width=15, height=2,
                                  command=self.toggle_copies_field)
-            self.canvas.create_window(width // 2 - 150 + (i * 300), height - 400,
-                                      window=btn, anchor=tk.CENTER)
-        self.copies_entry = tk.Entry(self.root, textvariable=self.copies_var,
-                                     font=("Helvetica", 24), width=5, state=tk.DISABLED)
-        self.canvas.create_window(width // 2, height - 300, window=self.copies_entry)
-        btn = tk.Button(self.root, text="Proceed to Payment",
-                        font=("Helvetica", 24, "bold"), bg="#FFD700",
-                        command=self.next_slide)
+            self.canvas.create_window(width // 2 - 150 + (i * 300), height - 380, window=btn, anchor=tk.CENTER)
+        self.copies_entry = tk.Entry(self.root, textvariable=self.copies_var, font=("Arial", 25), width=5, state=tk.DISABLED)
+        self.canvas.create_window(width // 2, height - 280, window=self.copies_entry)
+        btn = tk.Button(self.root, text="Proceed to Payment", font=("Arial", 30, "bold"), bg="#FFD700", command=self.next_slide)
         self.canvas.create_window(width // 2 + 150, height - 100, window=btn)
-        back_btn = tk.Button(self.root, text="Back",
-                             font=("Helvetica", 24, "bold"), bg="#FFD700",
-                             command=self.previous_slide)
+        back_btn = tk.Button(self.root, text="Back", font=("Arial", 30, "bold"), bg="#FFD700", command=self.previous_slide)
         self.canvas.create_window(width // 2 - 150, height - 100, window=back_btn)
 
     def toggle_copies_field(self):
-        """Enables/disables the copies input field based on print option selection."""
+        """Enables/disables the copies entry based on the print option."""
         if self.print_option_var.get() == "copies":
             self.copies_entry.config(state=tk.NORMAL)
         else:
             self.copies_entry.config(state=tk.DISABLED)
             self.copies_var.set("1")
 
-    def display_slide5(self, width, height):
-        """Slide 5: Payment summary screen showing details in a table format."""
-        self.canvas.delete("all")
-        self.draw_gradient(width, height, "#1A237E", "#64B5F6")
+    def display_text_slide5(self, width, height):
+        """Payment summary screen."""
         total_cost = self.calculate_cost()
         page_count = self.get_page_count()
         copies = int(self.copies_var.get()) if self.print_option_var.get() == "copies" else 1
-
-        # Create table using ttk.Treeview to display summary details
         table = ttk.Treeview(self.root, columns=("Setting", "Value"), show="headings", height=8)
         table.heading("Setting", text="Setting", anchor=tk.CENTER)
         table.heading("Value", text="Value", anchor=tk.CENTER)
         table.column("Setting", width=400, anchor=tk.CENTER)
         table.column("Value", width=400, anchor=tk.CENTER)
         style = ttk.Style()
-        style.configure("Treeview", font=("Helvetica", 20), rowheight=40, background="#1A237E", foreground="white")
-        style.configure("Treeview.Heading", font=("Helvetica", 25, "bold"), background="#64B5F6", foreground="black")
-        style.map("Treeview", background=[("selected", "#64B5F6")])
-        table.insert("", "end", values=("File", os.path.basename(self.file_path) if self.file_path else "None"))
+        style.configure("Treeview", font=("Arial", 20), rowheight=40, background="#0d084d", foreground="white")
+        style.configure("Treeview.Heading", font=("Arial", 25, "bold"), background="#0099ff", foreground="black")
+        style.map("Treeview", background=[("selected", "#0099ff")])
+        table.insert("", "end", values=("File", os.path.basename(self.file_path)))
         table.insert("", "end", values=("Size", f"{self.size_var.get().capitalize()} (₱{self.prices['size'][self.size_var.get()]:.2f})"))
         table.insert("", "end", values=("Color", f"{self.color_var.get().replace('_', ' ').title()} (₱{self.prices['color'][self.color_var.get()]:.2f})"))
         table.insert("", "end", values=("Print Option", "Copies" if self.print_option_var.get() == "copies" else "Whole File"))
@@ -282,21 +255,17 @@ class GradientApp:
         table.insert("", "end", values=("Total Pages", page_count * copies))
         table.insert("", "end", values=("Total Cost", f"₱{total_cost:.2f}"))
         self.canvas.create_window(width // 2, height // 2 - 50, window=table)
-        btn = tk.Button(self.root, text="Confirm Payment",
-                        font=("Helvetica", 24, "bold"), bg="#FFD700",
-                        command=self.next_slide)
+        btn = tk.Button(self.root, text="Confirm Payment", font=("Arial", 30, "bold"), bg="#FFD700", command=self.next_slide)
         self.canvas.create_window(width // 2 + 150, height - 100, window=btn)
-        back_btn = tk.Button(self.root, text="Back",
-                             font=("Helvetica", 24, "bold"), bg="#FFD700",
-                             command=self.previous_slide)
+        back_btn = tk.Button(self.root, text="Back", font=("Arial", 30, "bold"), bg="#FFD700", command=self.previous_slide)
         self.canvas.create_window(width // 2 - 150, height - 100, window=back_btn)
 
     def load_image_slide2(self, image_path, size=(300, 300)):
-        """Loads an image (for example, to display on slide 2 for Bluetooth transfer) with the specified size."""
+        """Loads an image for Slide 2."""
         return ImageTk.PhotoImage(Image.open(image_path).resize(size))
 
     def get_page_count(self):
-        """Counts the number of pages in a PDF file if applicable."""
+        """Returns the number of pages if the file is a PDF."""
         if self.file_path and self.file_path.endswith(".pdf"):
             from PyPDF2 import PdfReader
             with open(self.file_path, "rb") as f:
@@ -304,57 +273,92 @@ class GradientApp:
         return 1
 
     def handle_file_upload(self):
-        """Handles file upload after a sending method is selected."""
+        """Handles file upload from the INSTAPRINT folder."""
         upload_folder = "C:\\INSTAPRINTMACHINE"
         if not os.path.exists(upload_folder):
             os.makedirs(upload_folder)
-        self.file_path = filedialog.askopenfilename(
-            title="Select a file to upload",
-            initialdir=upload_folder
-        )
+        self.file_path = filedialog.askopenfilename(title="Select a file to upload", initialdir=upload_folder)
         if self.file_path:
             messagebox.showinfo("Success", "File uploaded successfully!")
             self.current_slide = 3
             if hasattr(self, 'continue_btn'):
                 self.continue_btn.config(state=tk.NORMAL)
 
+    def close_usb_explorer(self, drive):
+        """
+        Attempts to close any open File Explorer windows whose location matches the USB drive.
+        Requires pywin32.
+        """
+        try:
+            import win32com.client
+            shell = win32com.client.Dispatch("Shell.Application")
+            for window in shell.Windows():
+                try:
+                    location = window.LocationURL
+                    if location and location.startswith("file:///"):
+                        # Convert URL to a local path.
+                        local_path = urllib.parse.unquote(location[8:]).replace('/', '\\')
+                        if os.path.normcase(os.path.abspath(local_path)) == os.path.normcase(os.path.abspath(drive)):
+                            window.Quit()
+                except Exception:
+                    continue
+        except Exception as e:
+            print("Error closing USB explorer windows:", e)
+
     def handle_usb_transfer(self):
-        """Handles file transfer via USB cable."""
-        if not self.file_path:
-            messagebox.showerror("Error", "No file selected for transfer!")
-            return
+        """
+        Handles file transfer via USB.
+        Displays a message instructing the user to insert a USB.
+        After the user clicks OK, the application polls for a removable drive.
+        When a USB is detected, it automatically closes any extra Explorer window for that drive
+        and then opens a file dialog for the user to select a file.
+        """
+        messagebox.showinfo("USB Transfer", "Please insert a USB")
+        self.usb_dialog_opened = False  # Reset the flag
+        self.poll_for_usb()
+
+    def poll_for_usb(self):
+        """Polls for a removable USB drive and, once detected, opens a file dialog."""
         partitions = psutil.disk_partitions(all=False)
         usb_drives = []
         for p in partitions:
             if 'removable' in p.opts.lower():
                 usb_drives.append(p.device)
-        if not usb_drives:
-            messagebox.showerror("USB Transfer", "No removable USB drive detected!")
-            return
-        drive = usb_drives[0]
-        try:
-            dest_path = os.path.join(drive, os.path.basename(self.file_path))
-            shutil.copy(self.file_path, dest_path)
-            messagebox.showinfo("USB Transfer", f"File transferred successfully to {dest_path}!")
-            self.current_slide = 3
-            self.draw_slide()
-        except Exception as e:
-            messagebox.showerror("USB Transfer", f"Failed to transfer file: {e}")
+        if usb_drives:
+            drive = usb_drives[0]
+            # Automatically close any extra File Explorer windows for the USB drive.
+            self.close_usb_explorer(drive)
+            if not self.usb_dialog_opened:
+                self.usb_dialog_opened = True
+                file_selected = filedialog.askopenfilename(
+                    title="Select a file from your USB drive",
+                    initialdir=drive
+                )
+                if file_selected:
+                    self.file_path = file_selected
+                    messagebox.showinfo("USB Transfer", "File selected successfully!")
+                    self.current_slide = 3
+                    self.draw_slide()
+                else:
+                    messagebox.showerror("USB Transfer", "No file selected. Please try again.")
+                    self.usb_dialog_opened = False
+        else:
+            # Check again after 1 second if no USB drive is found.
+            self.root.after(1000, self.poll_for_usb)
 
     def place_logo(self, width, height):
-        """Positions the circular logo at the center of Slide 1."""
-        self.canvas.create_image(width // 2, height // 2 - 50,
-                                 image=self.logo_tk, anchor=tk.CENTER)
+        """Positions the logo on Slide 1."""
+        self.canvas.create_image(width // 2, height // 2 - 50, image=self.logo_tk, anchor=tk.CENTER)
 
     def calculate_cost(self):
-        """Calculates the total cost based on user selections."""
+        """Calculates the total cost based on the selected options."""
         try:
             pages = self.get_page_count()
             copies = int(self.copies_var.get()) if self.print_option_var.get() == "copies" else 1
             size_price = self.prices['size'][self.size_var.get()]
             color_price = self.prices['color'][self.color_var.get()]
             return (size_price + color_price) * pages * copies
-        except:
+        except Exception:
             return 0.00
 
 if __name__ == "__main__":
