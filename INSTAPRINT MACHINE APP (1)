@@ -166,7 +166,7 @@ class GradientApp:
     def display_text_slide1(self, width, height):
         """Welcome screen with logo and Start button."""
         self.place_logo(width, height)
-        btn = tk.Button(self.root, text="Start", font=("Arial", 30, "bold"),
+        btn = tk.Button(self.root, text="Start", font=("Tahoma", 30, "bold"),
                         bg="#0d084d", fg="white", command=self.next_slide)
         self.canvas.create_window(width // 2, height - 100, window=btn)
 
@@ -183,31 +183,31 @@ class GradientApp:
         self.canvas.delete("all")
         self.draw_gradient(width, height, "#0d084d", "#0066cc")
         self.canvas.create_text(width // 2, height // 8, text="Send Your File",
-                                font=("Impact", 70, "bold"), fill="white")
+                                font=("Tahoma", 70, "bold"), fill="white")
         self.canvas.create_text(width // 2, height // 4, text="Choose how you want to send your file",
-                                font=("Arial", 30, "bold"), fill="white")
+                                font=("Tahoma", 30, "bold"), fill="white")
         self.canvas.create_text(width // 2, int(height * 0.33), text="Device Name: INSTAPRINT",
-                                font=("Arial", 25, "bold"), fill="#FFD700")
+                                font=("Tahoma", 25, "bold"), fill="#FFD700")
 
         left_x = width // 3
         group_y = height - 350
         self.canvas.create_text(left_x, group_y - 150, text="Send Via:",
-                                font=("Impact", 40, "bold"), fill="white")
-        bt_button = tk.Button(self.root, text="Bluetooth", font=("Arial", 25, "bold"), bg="#0d084d", fg="white",
+                                font=("Tahoma", 40, "bold"), fill="white")
+        bt_button = tk.Button(self.root, text="Bluetooth", font=("Tahoma", 25, "bold"), bg="#0d084d", fg="white",
                               command=lambda: self.select_method("Bluetooth"))
         self.canvas.create_window(left_x, group_y - 50, window=bt_button, width=200)
-        usb_button = tk.Button(self.root, text="USB", font=("Arial", 25, "bold"), bg="#0d084d", fg="white",
+        usb_button = tk.Button(self.root, text="USB", font=("Tahoma", 25, "bold"), bg="#0d084d", fg="white",
                                command=lambda: self.select_method("USB"))
         self.canvas.create_window(left_x, group_y + 40, window=usb_button, width=200)
 
         right_x = (2 * width) // 3
         self.canvas.create_text(right_x, group_y - 150, text="Choose File:",
-                                font=("Impact", 40, "bold"), fill="white")
-        upload_button = tk.Button(self.root, text="Upload File", font=("Arial", 30, "bold"), bg="#0d084d", fg="white",
+                                font=("Tahoma", 40, "bold"), fill="white")
+        upload_button = tk.Button(self.root, text="Upload File", font=("Tahoma", 30, "bold"), bg="#0d084d", fg="white",
                                   command=self.handle_file_upload)
         self.canvas.create_window(right_x, group_y - 10, window=upload_button, width=230)
 
-        self.continue_btn = tk.Button(self.root, text="Continue", font=("Arial", 30, "bold"),
+        self.continue_btn = tk.Button(self.root, text="Continue", font=("Tahoma", 30, "bold"),
                                       bg="#0d084d", fg="white", state=tk.DISABLED, command=self.next_slide)
         self.canvas.create_window(width // 2, height - 75, window=self.continue_btn)
 
@@ -223,19 +223,19 @@ class GradientApp:
         filename = os.path.basename(self.file_path) if self.file_path else "No file uploaded"
         color = "#FFD700" if self.file_path else "white"
         self.canvas.create_text(width // 2, height // 2 - 40, text="File:",
-                                font=("Arial", 40, "bold"), fill="white")
+                                font=("Tahoma", 40, "bold"), fill="white")
         self.canvas.create_text(width // 2, height // 10 + 60, text="FILE CHOSEN:",
-                                font=("Arial", 75, "bold"), fill=color)
+                                font=("Tahoma", 75, "bold"), fill=color)
         self.canvas.create_text(width // 2, height // 2 + 20, text=filename,
-                                font=("Arial", 40, "bold"), fill="white")
-        btn = tk.Button(self.root, text="Continue", font=("Arial", 30, "bold"), bg="#FFD700", fg="white",
+                                font=("Tahoma", 40, "bold"), fill="white")
+        btn = tk.Button(self.root, text="Continue", font=("Tahoma", 30, "bold"), bg="#FFD700", fg="white",
                         command=self.next_slide)
         self.canvas.create_window(width // 2, height - 100, window=btn)
 
     def display_text_slide4(self, width, height):
         """Paper settings screen."""
         self.canvas.create_text(width // 2 - 350, height // 3 - 145, text="COLOR:",
-                                font=("Arial", 50, "bold"), fill="white", anchor=tk.W)
+                                font=("Tahoma", 50, "bold"), fill="white", anchor=tk.W)
         color_options = [
             ("Black and White", "black_and_white", "₱2.00 per page"),
             ("Colored", "color", "₱3.00 per page")
@@ -243,13 +243,13 @@ class GradientApp:
         for i, (text, value, price) in enumerate(color_options):
             btn = tk.Radiobutton(self.root, text=f"{text}\n{price}",
                                  variable=self.color_var, value=value,
-                                 font=("Arial", 25), bg="#0d084d", fg="white",
+                                 font=("Tahoma", 25), bg="#0d084d", fg="white",
                                  selectcolor="#0099ff", indicatoron=0,
                                  width=15, height=2)
             self.canvas.create_window(width // 2 - 350, height // 3 - 40 + (i * 120), window=btn, anchor=tk.W)
 
         self.canvas.create_text(width // 2 + 50, height // 3 - 145, text="SIZE:",
-                                font=("Arial", 50, "bold"), fill="white", anchor=tk.W)
+                                font=("Tahoma", 50, "bold"), fill="white", anchor=tk.W)
         size_options = [
             ("Short", "short", "₱1.00 per page"),
             ("Long", "long", "₱2.00 per page")
@@ -257,13 +257,13 @@ class GradientApp:
         for i, (text, value, price) in enumerate(size_options):
             btn = tk.Radiobutton(self.root, text=f"{text}\n{price}",
                                  variable=self.size_var, value=value,
-                                 font=("Arial", 25), bg="#0d084d", fg="white",
+                                 font=("Tahoma", 25), bg="#0d084d", fg="white",
                                  selectcolor="#0099ff", indicatoron=0,
                                  width=15, height=2)
             self.canvas.create_window(width // 2 + 50, height // 3 - 40 + (i * 120), window=btn, anchor=tk.W)
 
         self.canvas.create_text(width // 2, height - 380, text="PRINT OPTIONS:",
-                                font=("Arial", 50, "bold"), fill="white")
+                                font=("Tahoma", 50, "bold"), fill="white")
         print_options = [
             ("Print Whole File", "whole_file"),
             ("Specify Copies", "copies")
@@ -271,19 +271,19 @@ class GradientApp:
         for i, (text, value) in enumerate(print_options):
             btn = tk.Radiobutton(self.root, text=text,
                                  variable=self.print_option_var, value=value,
-                                 font=("Arial", 25), bg="#0d084d", fg="white",
+                                 font=("Tahoma", 25), bg="#0d084d", fg="white",
                                  selectcolor="#0099ff", indicatoron=0,
                                  width=15, height=2, command=self.toggle_copies_field)
             self.canvas.create_window(width // 2 - 150 + (i * 300), height - 280, window=btn, anchor=tk.CENTER)
 
-        self.copies_entry = tk.Entry(self.root, textvariable=self.copies_var, font=("Arial", 25), width=5,
+        self.copies_entry = tk.Entry(self.root, textvariable=self.copies_var, font=("Tahoma", 25), width=5,
                                      state=tk.DISABLED)
         self.canvas.create_window(width // 2, height - 180, window=self.copies_entry)
 
-        btn = tk.Button(self.root, text="Proceed to Payment", font=("Arial", 30, "bold"), bg="#FFD700", fg="white",
+        btn = tk.Button(self.root, text="Proceed to Payment", font=("Tahoma", 30, "bold"), bg="#FFD700", fg="white",
                         command=self.next_slide)
         self.canvas.create_window(width // 2 + 150, height - 100, window=btn)
-        back_btn = tk.Button(self.root, text="Back", font=("Arial", 30, "bold"), bg="#FFD700", fg="white",
+        back_btn = tk.Button(self.root, text="Back", font=("Tahoma", 30, "bold"), bg="#FFD700", fg="white",
                              command=self.previous_slide)
         self.canvas.create_window(width // 2 - 150, height - 100, window=back_btn)
 
@@ -316,17 +316,17 @@ class GradientApp:
         summary_table.column("Value", width=400, anchor=tk.CENTER)
         style = ttk.Style()
         style.theme_use('clam')
-        style.configure("Treeview", font=("Arial", 20), rowheight=40, background="#0d084d", foreground="white")
-        style.configure("Treeview.Heading", font=("Arial", 25, "bold"), background="#FFD700", foreground="white")
+        style.configure("Treeview", font=("Tahoma", 20), rowheight=40, background="#0d084d", foreground="white")
+        style.configure("Treeview.Heading", font=("Tahoma", 25, "bold"), background="#FFD700", foreground="white")
         style.map("Treeview", background=[("selected", "#0d084d")])
 
         summary_table.insert("", "end", values=("File", os.path.basename(self.file_path)))
         summary_table.insert("", "end", values=(
-        "Size", f"{self.size_var.get().capitalize()} (₱{self.prices['size'][self.size_var.get()]:.2f})"))
+            "Size", f"{self.size_var.get().capitalize()} (₱{self.prices['size'][self.size_var.get()]:.2f})"))
         summary_table.insert("", "end", values=("Color",
-                                                f"{self.color_var.get().replace('_', ' ').title()} (₱{self.prices['color'][self.color_var.get()]:.2f})"))
+            f"{self.color_var.get().replace('_', ' ').title()} (₱{self.prices['color'][self.color_var.get()]:.2f})"))
         summary_table.insert("", "end", values=(
-        "Print Option", "Copies" if self.print_option_var.get() == "copies" else "Whole File"))
+            "Print Option", "Copies" if self.print_option_var.get() == "copies" else "Whole File"))
         summary_table.insert("", "end", values=("Pages per Copy", page_count))
         summary_table.insert("", "end", values=("Total Copies", copies))
         summary_table.insert("", "end", values=("Total Pages", page_count * copies))
@@ -339,14 +339,14 @@ class GradientApp:
         amount_table.column("Amount", width=800, anchor=tk.CENTER)
         amount_table.insert("", "end", values=(f"₱{net_cost:.2f}",))
         # Adjusted position to be more centered vertically.
-        self.canvas.create_window(width // 2, height // 2 + 50, window=amount_table)
+        self.canvas.create_window(width // 2, height // 2 - 40, window=amount_table)
 
         # Confirm Payment button: enabled only if net cost is 0.
         btn_state = tk.NORMAL if net_cost == 0 else tk.DISABLED
-        btn = tk.Button(self.root, text="Confirm Payment", font=("Arial", 30, "bold"),
+        btn = tk.Button(self.root, text="Confirm Payment", font=("Tahoma", 30, "bold"),
                         bg="#FFD700", fg="white", state=btn_state, command=self.next_slide)
         self.canvas.create_window(width // 2 + 150, height - 100, window=btn)
-        back_btn = tk.Button(self.root, text="Back", font=("Arial", 30, "bold"),
+        back_btn = tk.Button(self.root, text="Back", font=("Tahoma", 30, "bold"),
                              bg="#FFD700", fg="white", command=self.previous_slide)
         self.canvas.create_window(width // 2 - 150, height - 100, window=back_btn)
 
