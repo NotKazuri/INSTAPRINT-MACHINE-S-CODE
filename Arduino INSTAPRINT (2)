@@ -1,0 +1,81 @@
+const int COIN_PIN = 2;  
+const unsigned long DEBOUNCE_TIME = 50;    
+const unsigned long RESET_TIMEOUT = 300;  
+const unsigned long LOCKOUT_TIME = 500;    
+
+volatile unsigned long lastPulseTime = 0;
+volatile int pulseCount = 0;
+unsigned long lastResetTime = 0;
+bool locked = false;
+int totalCredits = 0;  
+
+void setup() {
+  Serial.begin(9600);
+  pinMode(COIN_PIN, INPUT_PULLUP);  
+  attachInterrupt(digitalPinToInterrupt(COIN_PIN), handlePulse, FALLING);  
+  Serial.println("Coin Acceptor Ready");
+}
+
+// Interrupt function to handle pulses with debounce
+void handlePulse() {
+  unsigned long currentTime = millis();
+  if (currentTime - lastPulseTime > DEBOUNCE_TIME) {  
+    pulseCount++;
+    lastPulseTime = currentTime;
+  }
+}
+
+// Function to determine the coin value based on pulse count
+int getCoinValue(int pulses) {
+  switch (pulses) {
+    case 1:  return 1;   // 1 pulse = 1 peso
+    case 5:  return 5;   // 5 pulses = 5 pesos
+    case 10: return 10;  // 10 pulses = 10 pesos
+    case 20: return 20;  // 20 pulses = 20 pesos
+    default: return 0;   // Invalid pulse count
+  }
+}
+
+void processCoin() {
+  // Use an atomic block to safely read and reset pulseCount
+  int localPulseCount;
+  noInterrupts();
+  localPulseCount = pulseCount;
+  pulseCount = 0;
+  interrupts();
+
+  if (localPulseCount > 0) {
+    int coinValue = getCoinValue(localPulseCount);
+    if (coinValue > 0) {
+      totalCredits += coinValue;  // Update balance
+      Serial.print("Accepted Coin: ");
+      Serial.print(coinValue);
+      Serial.println(" pesos");
+      Serial.print("Total Balance: ");
+      Serial.print(totalCredits);
+      Serial.println(" pesos");
+    } else {
+      Serial.print("Unknown coin with ");
+      Serial.print(localPulseCount);
+      Serial.println(" pulses");
+    }
+    locked = true;
+    lastResetTime = millis();
+  }
+}
+
+void loop() {
+  unsigned long currentTime = millis();
+
+  // Process coin if there are pulses and no new pulse arrived within RESET_TIMEOUT
+  if (!locked && pulseCount > 0 && (currentTime - lastPulseTime > RESET_TIMEOUT)) {
+    processCoin();
+  }
+
+  // Reset the lockout flag after LOCKOUT_TIME
+  if (locked && (currentTime - lastResetTime > LOCKOUT_TIME)) {
+    locked = false;
+  }
+
+  delay(50);  // Shorter delay for more responsive processing
+}
