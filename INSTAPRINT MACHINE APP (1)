@@ -1,6 +1,6 @@
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
-from PIL import Image, ImageTk, ImageDraw
+from PIL import Image, ImageTk
 import os
 import subprocess
 import shutil
@@ -44,9 +44,9 @@ class GradientApp:
         self.canvas = tk.Canvas(root, highlightthickness=0)
         self.canvas.pack(fill=tk.BOTH, expand=True)
 
-        # Load logo
-        self.logo_path = "InstaPrint Logo.png"
-        self.logo_tk = self.create_circular_logo(self.logo_path, size=500)
+        # Load logo (normal rectangular logo)
+        self.logo_path = "INSTAPRINT MAIN LOGO.png"
+        self.logo_tk = self.create_logo(self.logo_path, size=700)
 
         # Initial setup
         self.draw_slide()
@@ -105,14 +105,10 @@ class GradientApp:
             messagebox.showinfo("Payment", "Full payment received! Proceeding to print job.")
             self.next_slide()  # Transition to next slide (printing)
 
-    def create_circular_logo(self, image_path, size=400):
-        """Creates a circular logo image."""
+    def create_logo(self, image_path, size=400):
+        """Creates a normal logo image without a circular mask."""
         img = Image.open(image_path).convert("RGBA").resize((size, size))
-        mask = Image.new("L", (size, size), 0)
-        ImageDraw.Draw(mask).ellipse((0, 0, size, size), fill=250)
-        circular_img = Image.new("RGBA", (size, size))
-        circular_img.paste(img, (0, 0), mask)
-        return ImageTk.PhotoImage(circular_img)
+        return ImageTk.PhotoImage(img)
 
     def draw_gradient(self, width, height, start_color, end_color):
         """Draws a vertical background gradient."""
@@ -164,10 +160,13 @@ class GradientApp:
             self.draw_slide()
 
     def display_text_slide1(self, width, height):
-        """Welcome screen with logo and Start button."""
+        """Welcome screen with logo, 'By: 12 STEM 4-B' text, and Start button."""
         self.place_logo(width, height)
+        # Display the additional text below the logo.
+        self.canvas.create_text(width // 2, height // 1.48, text="By: 12 STEM 4-B",
+                                font=("Tahoma", 25, "bold"), fill="white")
         btn = tk.Button(self.root, text="Start", font=("Tahoma", 30, "bold"),
-                        bg="#0d084d", fg="white", command=self.next_slide)
+                        bg="#debb02", fg="white", command=self.next_slide)
         self.canvas.create_window(width // 2, height - 100, window=btn)
 
     def handle_bluetooth(self):
@@ -184,31 +183,33 @@ class GradientApp:
         self.draw_gradient(width, height, "#0d084d", "#0066cc")
         self.canvas.create_text(width // 2, height // 8, text="Send Your File",
                                 font=("Tahoma", 70, "bold"), fill="white")
-        self.canvas.create_text(width // 2, height // 4, text="Choose how you want to send your file",
-                                font=("Tahoma", 30, "bold"), fill="white")
-        self.canvas.create_text(width // 2, int(height * 0.33), text="Device Name: INSTAPRINT",
-                                font=("Tahoma", 25, "bold"), fill="#FFD700")
+        self.canvas.create_text(width // 2, height // 2.6, text="Choose how you want to send your file",
+                                font=("Tahoma", 35, "bold"), fill="white")
+        self.canvas.create_text(width // 2, int(height * 0.2), text="Device Name: INSTAPRINT",
+                                font=("Tahoma", 30, "bold"), fill="#debb02")
 
         left_x = width // 3
         group_y = height - 350
         self.canvas.create_text(left_x, group_y - 150, text="Send Via:",
-                                font=("Tahoma", 40, "bold"), fill="white")
-        bt_button = tk.Button(self.root, text="Bluetooth", font=("Tahoma", 25, "bold"), bg="#0d084d", fg="white",
+                                font=("Tahoma", 50, "bold"), fill="white")
+        bt_button = tk.Button(self.root, text="Bluetooth", font=("Tahoma", 28, "bold"),
+                              bg="#0099ff", fg="white",
                               command=lambda: self.select_method("Bluetooth"))
         self.canvas.create_window(left_x, group_y - 50, window=bt_button, width=200)
-        usb_button = tk.Button(self.root, text="USB", font=("Tahoma", 25, "bold"), bg="#0d084d", fg="white",
+        usb_button = tk.Button(self.root, text="USB", font=("Tahoma", 28, "bold"),
+                               bg="#0099ff", fg="white",
                                command=lambda: self.select_method("USB"))
         self.canvas.create_window(left_x, group_y + 40, window=usb_button, width=200)
 
         right_x = (2 * width) // 3
         self.canvas.create_text(right_x, group_y - 150, text="Choose File:",
-                                font=("Tahoma", 40, "bold"), fill="white")
-        upload_button = tk.Button(self.root, text="Upload File", font=("Tahoma", 30, "bold"), bg="#0d084d", fg="white",
-                                  command=self.handle_file_upload)
+                                font=("Tahoma", 50, "bold"), fill="white")
+        upload_button = tk.Button(self.root, text="Select File", font=("Tahoma", 28, "bold"),
+                                  bg="#0099ff", fg="white", command=self.handle_file_upload)
         self.canvas.create_window(right_x, group_y - 10, window=upload_button, width=230)
 
         self.continue_btn = tk.Button(self.root, text="Continue", font=("Tahoma", 30, "bold"),
-                                      bg="#0d084d", fg="white", state=tk.DISABLED, command=self.next_slide)
+                                      bg="#debb02", fg="white", state=tk.DISABLED, command=self.next_slide)
         self.canvas.create_window(width // 2, height - 75, window=self.continue_btn)
 
     def select_method(self, method):
@@ -228,8 +229,8 @@ class GradientApp:
                                 font=("Tahoma", 75, "bold"), fill=color)
         self.canvas.create_text(width // 2, height // 2 + 20, text=filename,
                                 font=("Tahoma", 40, "bold"), fill="white")
-        btn = tk.Button(self.root, text="Continue", font=("Tahoma", 30, "bold"), bg="#FFD700", fg="white",
-                        command=self.next_slide)
+        btn = tk.Button(self.root, text="Continue", font=("Tahoma", 30, "bold"),
+                        bg="#FFD700", fg="white", command=self.next_slide)
         self.canvas.create_window(width // 2, height - 100, window=btn)
 
     def display_text_slide4(self, width, height):
@@ -265,7 +266,7 @@ class GradientApp:
         self.canvas.create_text(width // 2, height - 380, text="PRINT OPTIONS:",
                                 font=("Tahoma", 50, "bold"), fill="white")
         print_options = [
-            ("Print Whole File", "whole_file"),
+            ("Whole File", "whole_file"),
             ("Specify Copies", "copies")
         ]
         for i, (text, value) in enumerate(print_options):
@@ -280,11 +281,11 @@ class GradientApp:
                                      state=tk.DISABLED)
         self.canvas.create_window(width // 2, height - 180, window=self.copies_entry)
 
-        btn = tk.Button(self.root, text="Proceed to Payment", font=("Tahoma", 30, "bold"), bg="#FFD700", fg="white",
-                        command=self.next_slide)
+        btn = tk.Button(self.root, text="Proceed to Payment", font=("Tahoma", 30, "bold"),
+                        bg="#debb02", fg="white", command=self.next_slide)
         self.canvas.create_window(width // 2 + 150, height - 100, window=btn)
-        back_btn = tk.Button(self.root, text="Back", font=("Tahoma", 30, "bold"), bg="#FFD700", fg="white",
-                             command=self.previous_slide)
+        back_btn = tk.Button(self.root, text="Back", font=("Tahoma", 30, "bold"),
+                             bg="#debb02", fg="white", command=self.previous_slide)
         self.canvas.create_window(width // 2 - 150, height - 100, window=back_btn)
 
     def toggle_copies_field(self):
@@ -317,7 +318,7 @@ class GradientApp:
         style = ttk.Style()
         style.theme_use('clam')
         style.configure("Treeview", font=("Tahoma", 20), rowheight=40, background="#0d084d", foreground="white")
-        style.configure("Treeview.Heading", font=("Tahoma", 25, "bold"), background="#FFD700", foreground="white")
+        style.configure("Treeview.Heading", font=("Tahoma", 25, "bold"), background="#0099ff", foreground="white")
         style.map("Treeview", background=[("selected", "#0d084d")])
 
         summary_table.insert("", "end", values=("File", os.path.basename(self.file_path)))
@@ -338,16 +339,15 @@ class GradientApp:
         amount_table.heading("Amount", text="Amount to be paid", anchor=tk.CENTER)
         amount_table.column("Amount", width=800, anchor=tk.CENTER)
         amount_table.insert("", "end", values=(f"₱{net_cost:.2f}",))
-        # Adjusted position to be more centered vertically.
         self.canvas.create_window(width // 2, height // 2 - 40, window=amount_table)
 
         # Confirm Payment button: enabled only if net cost is 0.
         btn_state = tk.NORMAL if net_cost == 0 else tk.DISABLED
-        btn = tk.Button(self.root, text="Confirm Payment", font=("Tahoma", 30, "bold"),
-                        bg="#FFD700", fg="white", state=btn_state, command=self.next_slide)
+        btn = tk.Button(self.root, text="Print Your File", font=("Tahoma", 30, "bold"),
+                        bg="#debb02", fg="white", state=btn_state, command=self.next_slide)
         self.canvas.create_window(width // 2 + 150, height - 100, window=btn)
         back_btn = tk.Button(self.root, text="Back", font=("Tahoma", 30, "bold"),
-                             bg="#FFD700", fg="white", command=self.previous_slide)
+                             bg="#debb02", fg="white", command=self.previous_slide)
         self.canvas.create_window(width // 2 - 150, height - 100, window=back_btn)
 
     def load_image_slide2(self, image_path, size=(300, 300)):
