@@ -136,6 +136,8 @@ class GradientApp:
             self.display_text_slide4(width, height)
         elif self.current_slide == 5:
             self.display_text_slide5(width, height)
+        elif self.current_slide == 6:
+            self.display_text_slide6(width, height)
         self.canvas.update_idletasks()
 
     def next_slide(self):
@@ -143,14 +145,19 @@ class GradientApp:
         if self.current_slide == 1:
             self.current_slide = 2
         elif self.current_slide == 2:
-            pass  # File upload/USB transfer triggers transition.
+            # When on slide 2, move to slide 3 only if a file has been selected.
+            if self.file_path:
+                self.current_slide = 3
+            else:
+                messagebox.showwarning("No File Selected", "Please select a file before continuing.")
+                return
         elif self.current_slide == 3:
             self.current_slide = 4
         elif self.current_slide == 4:
             self.current_slide = 5
         elif self.current_slide == 5:
             self.execute_print_job()
-            self.current_slide = 6  # Optionally a "printing complete" slide.
+            self.current_slide = 6  # Transition to "printing complete" slide.
         self.draw_slide()
 
     def previous_slide(self):
@@ -162,9 +169,6 @@ class GradientApp:
     def display_text_slide1(self, width, height):
         """Welcome screen with logo, 'By: 12 STEM 4-B' text, and Start button."""
         self.place_logo(width, height)
-        # Display the additional text below the logo.
-        self.canvas.create_text(width // 2, height // 1.48, text="By: 12 STEM 4-B",
-                                font=("Tahoma", 25, "bold"), fill="white")
         btn = tk.Button(self.root, text="Start", font=("Tahoma", 30, "bold"),
                         bg="#debb02", fg="white", command=self.next_slide)
         self.canvas.create_window(width // 2, height - 100, window=btn)
@@ -183,9 +187,9 @@ class GradientApp:
         self.draw_gradient(width, height, "#0d084d", "#0066cc")
         self.canvas.create_text(width // 2, height // 8, text="Send Your File",
                                 font=("Tahoma", 70, "bold"), fill="white")
-        self.canvas.create_text(width // 2, height // 2.6, text="Choose how you want to send your file",
-                                font=("Tahoma", 35, "bold"), fill="white")
-        self.canvas.create_text(width // 2, int(height * 0.2), text="Device Name: INSTAPRINT",
+        self.canvas.create_text(width // 2, height // 3.1, text="Choose how you want to send your file",
+                                font=("Tahoma", 32, "bold"), fill="white")
+        self.canvas.create_text(width // 2, int(height * 0.21), text="Device Name: INSTAPRINT",
                                 font=("Tahoma", 30, "bold"), fill="#debb02")
 
         left_x = width // 3
@@ -208,6 +212,7 @@ class GradientApp:
                                   bg="#0099ff", fg="white", command=self.handle_file_upload)
         self.canvas.create_window(right_x, group_y - 10, window=upload_button, width=230)
 
+        # Continue button on slide 2; it will only work if a file has been selected.
         self.continue_btn = tk.Button(self.root, text="Continue", font=("Tahoma", 30, "bold"),
                                       bg="#debb02", fg="white", state=tk.DISABLED, command=self.next_slide)
         self.canvas.create_window(width // 2, height - 75, window=self.continue_btn)
@@ -220,18 +225,36 @@ class GradientApp:
             self.handle_usb_transfer()
 
     def display_text_slide3(self, width, height):
-        """File confirmation screen."""
+        """File confirmation screen that shows the selected file, with Back and Continue buttons."""
+        self.canvas.delete("all")
+        self.draw_gradient(width, height, "#0d084d", "#0066cc")
+        
+        # Retrieve just the file name from the full path
         filename = os.path.basename(self.file_path) if self.file_path else "No file uploaded"
-        color = "#FFD700" if self.file_path else "white"
-        self.canvas.create_text(width // 2, height // 2 - 40, text="File:",
-                                font=("Tahoma", 40, "bold"), fill="white")
-        self.canvas.create_text(width // 2, height // 10 + 60, text="FILE CHOSEN:",
-                                font=("Tahoma", 75, "bold"), fill=color)
-        self.canvas.create_text(width // 2, height // 2 + 20, text=filename,
-                                font=("Tahoma", 40, "bold"), fill="white")
-        btn = tk.Button(self.root, text="Continue", font=("Tahoma", 30, "bold"),
-                        bg="#FFD700", fg="white", command=self.next_slide)
-        self.canvas.create_window(width // 2, height - 100, window=btn)
+        
+        # Display a header message
+        self.canvas.create_text(
+            width // 2, height // 8,
+            text="You have selected the following file:",
+            font=("Tahoma", 50, "bold"), fill="white"
+        )
+        
+        # Display the file name
+        self.canvas.create_text(
+            width // 2, height // 2,
+            text=filename,
+            font=("Tahoma", 40, "bold"), fill="#FFD700"
+        )
+        
+        # Back button to return to slide 2 and reselect a file if needed.
+        back_btn = tk.Button(self.root, text="Back", font=("Tahoma", 30, "bold"),
+                             bg="#debb02", fg="white", command=self.previous_slide)
+        self.canvas.create_window(width // 2 - 150, height - 100, window=back_btn)
+        
+        # Continue button to proceed to the next slide.
+        continue_btn = tk.Button(self.root, text="Continue", font=("Tahoma", 30, "bold"),
+                                 bg="#FFD700", fg="white", command=self.next_slide)
+        self.canvas.create_window(width // 2 + 150, height - 100, window=continue_btn)
 
     def display_text_slide4(self, width, height):
         """Paper settings screen."""
@@ -266,8 +289,8 @@ class GradientApp:
         self.canvas.create_text(width // 2, height - 380, text="PRINT OPTIONS:",
                                 font=("Tahoma", 50, "bold"), fill="white")
         print_options = [
-            ("Whole File", "whole_file"),
-            ("Specify Copies", "copies")
+            ("One Copy", "whole_file"),
+            ("Multiple Copies", "copies")
         ]
         for i, (text, value) in enumerate(print_options):
             btn = tk.Radiobutton(self.root, text=text,
@@ -277,9 +300,12 @@ class GradientApp:
                                  width=15, height=2, command=self.toggle_copies_field)
             self.canvas.create_window(width // 2 - 150 + (i * 300), height - 280, window=btn, anchor=tk.CENTER)
 
-        self.copies_entry = tk.Entry(self.root, textvariable=self.copies_var, font=("Tahoma", 25), width=5,
-                                     state=tk.DISABLED)
-        self.canvas.create_window(width // 2, height - 180, window=self.copies_entry)
+        # Create the copies entry widget and store its canvas window ID.
+        self.copies_entry = tk.Entry(self.root, textvariable=self.copies_var, font=("Tahoma", 25), width=5)
+        self.copies_entry_window = self.canvas.create_window(width // 2, height - 180, window=self.copies_entry)
+        # Hide it initially if "Whole File" is selected.
+        if self.print_option_var.get() != "copies":
+            self.canvas.itemconfigure(self.copies_entry_window, state="hidden")
 
         btn = tk.Button(self.root, text="Proceed to Payment", font=("Tahoma", 30, "bold"),
                         bg="#debb02", fg="white", command=self.next_slide)
@@ -289,11 +315,13 @@ class GradientApp:
         self.canvas.create_window(width // 2 - 150, height - 100, window=back_btn)
 
     def toggle_copies_field(self):
-        """Enables/disables the copies entry based on the print option."""
+        """Shows or hides the copies entry based on the selected print option."""
         if self.print_option_var.get() == "copies":
-            self.copies_entry.config(state=tk.NORMAL)
+            # Show the entry widget.
+            self.canvas.itemconfigure(self.copies_entry_window, state="normal")
         else:
-            self.copies_entry.config(state=tk.DISABLED)
+            # Hide the entry widget and reset copies to 1.
+            self.canvas.itemconfigure(self.copies_entry_window, state="hidden")
             self.copies_var.set("1")
 
     def display_text_slide5(self, width, height):
@@ -325,21 +353,21 @@ class GradientApp:
         summary_table.insert("", "end", values=(
             "Size", f"{self.size_var.get().capitalize()} (₱{self.prices['size'][self.size_var.get()]:.2f})"))
         summary_table.insert("", "end", values=("Color",
-            f"{self.color_var.get().replace('_', ' ').title()} (₱{self.prices['color'][self.color_var.get()]:.2f})"))
+                                                f"{self.color_var.get().replace('_', ' ').title()} (₱{self.prices['color'][self.color_var.get()]:.2f})"))
         summary_table.insert("", "end", values=(
             "Print Option", "Copies" if self.print_option_var.get() == "copies" else "Whole File"))
         summary_table.insert("", "end", values=("Pages per Copy", page_count))
         summary_table.insert("", "end", values=("Total Copies", copies))
         summary_table.insert("", "end", values=("Total Pages", page_count * copies))
 
-        self.canvas.create_window(width // 2, height // 2 - 200, window=summary_table)
+        self.canvas.create_window(width // 2, height // 2 - 80, window=summary_table)
 
         # Build a separate table just for "Amount to be paid"
         amount_table = ttk.Treeview(self.root, columns=("Amount",), show="headings", height=1)
         amount_table.heading("Amount", text="Amount to be paid", anchor=tk.CENTER)
         amount_table.column("Amount", width=800, anchor=tk.CENTER)
         amount_table.insert("", "end", values=(f"₱{net_cost:.2f}",))
-        self.canvas.create_window(width // 2, height // 2 - 40, window=amount_table)
+        self.canvas.create_window(width // 2, height // 1.5 - 3, window=amount_table)
 
         # Confirm Payment button: enabled only if net cost is 0.
         btn_state = tk.NORMAL if net_cost == 0 else tk.DISABLED
@@ -349,6 +377,25 @@ class GradientApp:
         back_btn = tk.Button(self.root, text="Back", font=("Tahoma", 30, "bold"),
                              bg="#debb02", fg="white", command=self.previous_slide)
         self.canvas.create_window(width // 2 - 150, height - 100, window=back_btn)
+
+    def display_text_slide6(self, width, height):
+        """Printing complete screen.
+        Displays the logo in the middle, a text below it prompting the user
+        to press the button when finished printing, and a 'Done Printing' button.
+        Pressing the button resets the machine back to the start.
+        """
+        self.canvas.delete("all")
+        self.draw_gradient(width, height, "#0d084d", "#0066cc")
+        # Place the logo in the center
+        self.canvas.create_image(width // 2, height // 2 - 100, image=self.logo_tk, anchor=tk.CENTER)
+        # Display the instruction text below the logo
+        self.canvas.create_text(width // 2, height // 2 + 50,
+                                text="Press this button when you finish printing",
+                                font=("Tahoma", 40, "bold"), fill="white")
+        # "Done Printing" button resets the machine
+        done_button = tk.Button(self.root, text="Done Printing", font=("Tahoma", 30, "bold"),
+                                bg="#debb02", fg="white", command=self.reset_machine)
+        self.canvas.create_window(width // 2, height - 100, window=done_button)
 
     def load_image_slide2(self, image_path, size=(300, 300)):
         """Loads and resizes an image for Slide 2."""
@@ -371,11 +418,19 @@ class GradientApp:
         upload_folder = "C:\\INSTAPRINTMACHINE"
         if not os.path.exists(upload_folder):
             os.makedirs(upload_folder)
-        self.file_path = filedialog.askopenfilename(title="Select a file to upload",
-                                                    initialdir=upload_folder)
-        if self.file_path:
-            messagebox.showinfo("Success", "File uploaded successfully!")
-            self.current_slide = 3
+        # Only allow PDF and Word files
+        file_path = filedialog.askopenfilename(
+            title="Select a file to upload",
+            initialdir=upload_folder,
+            filetypes=[("PDF Files", "*.pdf"), ("Word Documents", "*.doc;*.docx")]
+        )
+        if file_path:
+            if not file_path.lower().endswith(('.pdf', '.doc', '.docx')):
+                messagebox.showerror("File Error",
+                                     "Selected file type is not supported. Please select a PDF or Microsoft Word document.")
+                return
+            self.file_path = file_path
+            # Enable the continue button now that a file is selected.
             if hasattr(self, 'continue_btn'):
                 self.continue_btn.config(state=tk.NORMAL)
 
@@ -390,7 +445,7 @@ class GradientApp:
             for window in shell.Windows():
                 try:
                     location = window.LocationURL
-                    if location and location.startswith("file:///"):
+                    if location and location.startswith("file:/C:\INSTAPRINT MACHINE///receivet"):
                         local_path = urllib.parse.unquote(location[8:]).replace('/', '\\')
                         if os.path.normcase(os.path.abspath(local_path)) == os.path.normcase(os.path.abspath(drive)):
                             window.Quit()
@@ -404,8 +459,7 @@ class GradientApp:
         Handles file transfer via USB.
         Displays a message instructing the user to insert a USB.
         After the user clicks OK, the application polls for a removable drive.
-        Once a USB drive is detected, a file dialog is opened for the user to select a file.
-        When a file is selected, the app proceeds to the next slide.
+        Once a file is detected, a file dialog is opened for the user to select a file.
         """
         messagebox.showinfo("USB Transfer", "Please insert a USB")
         self.usb_dialog_opened = False
@@ -423,13 +477,22 @@ class GradientApp:
             self.close_usb_explorer(drive)
             if not self.usb_dialog_opened:
                 self.usb_dialog_opened = True
-                file_selected = filedialog.askopenfilename(title="Select a file from your USB drive",
-                                                           initialdir=drive)
+                file_selected = filedialog.askopenfilename(
+                    title="Select a file from your USB drive",
+                    initialdir=drive,
+                    filetypes=[("PDF Files", "*.pdf"), ("Word Documents", "*.doc;*.docx")]
+                )
                 if file_selected:
+                    if not file_selected.lower().endswith(('.pdf', '.doc', '.docx')):
+                        messagebox.showerror("File Error",
+                                             "Selected file type is not supported. Please select a PDF or Microsoft Word document.")
+                        self.usb_dialog_opened = False
+                        return
                     self.file_path = file_selected
                     messagebox.showinfo("USB Transfer", "File selected successfully!")
-                    self.current_slide = 3
-                    self.draw_slide()
+                    # Enable the continue button on slide 2.
+                    if hasattr(self, 'continue_btn'):
+                        self.continue_btn.config(state=tk.NORMAL)
                 else:
                     messagebox.showerror("USB Transfer", "No file selected. Please try again.")
                     self.usb_dialog_opened = False
@@ -463,6 +526,16 @@ class GradientApp:
             messagebox.showinfo("Printing", "Print job sent successfully!")
         except Exception as e:
             messagebox.showerror("Printing Error", f"Failed to print document: {e}")
+
+    def reset_machine(self):
+        """Resets the machine state so it can start a new print job."""
+        self.current_slide = 1
+        self.file_path = None
+        self.size_var.set("short")
+        self.color_var.set("black_and_white")
+        self.print_option_var.set("whole_file")
+        self.copies_var.set("1")
+        self.draw_slide()
 
 
 if __name__ == "__main__":
