@@ -1,0 +1,534 @@
+import tkinter as tk
+from tkinter import ttk, filedialog, messagebox
+from PIL import Image, ImageTk
+import os
+import subprocess
+import shutil
+import psutil
+import urllib.parse
+import win32api
+import win32print
+import serial  # Requires pySerial
+import time
+from PyPDF2 import PdfReader  # For PDF page count
+
+
+class GradientApp:
+   def __init__(self, root):
+       self.root = root
+       self.root.title("InstaPrint Machine")
+       self.root.attributes('-fullscreen', True)
+
+       # Initialize variables
+       self.current_slide = 1
+       self.file_path = None
+       self.size_var = tk.StringVar(value="short")
+       self.color_var = tk.StringVar(value="black_and_white")
+       self.print_option_var = tk.StringVar(value="whole_file")
+       self.copies_var = tk.StringVar(value="1")
+       self.usb_dialog_opened = False  # Ensures USB file dialog opens only once
+
+       # Price configuration
+       self.prices = {
+           "size": {"short": 1.00, "long": 2.00},
+           "color": {"black_and_white": 2.00, "color": 3.00}
+       }
+
+       # Arduino serial integration variables
+       self.arduino_balance = 0.0
+       self.ser = None
+       self.init_serial_connection()
+       self.read_serial()  # Start polling serial data
+
+       # Create canvas that fills the window
+       self.canvas = tk.Canvas(root, highlightthickness=0)
+       self.canvas.pack(fill=tk.BOTH, expand=True)
+
+       # Load logo (normal rectangular logo)
+       self.logo_path = "INSTAPRINT MAIN LOGO.png"
+       self.logo_tk = self.create_logo(self.logo_path, size=700)
+
+       # Initial setup
+       self.draw_slide()
+       self.root.bind("<Escape>", lambda e: root.destroy())
+       self.canvas.bind("<Configure>", self.draw_slide)
+
+   def init_serial_connection(self):
+       """Initialize the serial connection to the Arduino."""
+       try:
+           # Replace 'COM3' with your actual Arduino port.
+           self.ser = serial.Serial('COM3', 9600, timeout=1)
+           time.sleep(2)  # Give the Arduino time to reset
+           print("Serial connection established at 9600 baud.")
+       except Exception as e:
+           messagebox.showerror("Serial Error", f"Failed to open serial port: {e}")
+           self.ser = None
+
+   def read_serial(self):
+       """Poll the serial port for data and update arduino_balance if available."""
+       if self.ser is not None:
+           try:
+               if self.ser.in_waiting:
+                   line = self.ser.readline().decode('utf-8', errors='ignore').strip()
+                   print("Serial read:", line)
+                   # Expected format: "Total Balance: 20 Pesos"
+                   if line.startswith("Total Balance:"):
+                       parts = line.split()
+                       if len(parts) >= 3:
+                           try:
+                               self.arduino_balance = float(parts[2])
+                               self.update_payment()  # Refresh UI after coin insertion
+                           except ValueError:
+                               print("Error parsing coin amount")
+           except Exception as e:
+               print("Serial read error:", e)
+       # Schedule the next serial poll after 500 ms
+       self.root.after(500, self.read_serial)
+
+   def update_payment(self):
+       """
+       Checks the payment status.
+       If the inserted coin amount meets or exceeds the total cost,
+       the print job is triggered.
+       Otherwise, if the Payment Summary slide is active, the slide is redrawn
+       so that the table updates live.
+       """
+       total_cost = self.calculate_cost()  # Total cost in pesos
+       print(f"Amount to be paid: ₱{total_cost:.2f}, Inserted: ₱{self.arduino_balance:.2f}")
+
+       # If on the Payment Summary slide, refresh the display so the table updates.
+       if self.current_slide == 5:
+           self.draw_slide()
+
+   def create_logo(self, image_path, size=400):
+       """Creates a normal logo image without a circular mask."""
+       img = Image.open(image_path).convert("RGBA").resize((size, size))
+       return ImageTk.PhotoImage(img)
+
+   def draw_gradient(self, width, height, start_color, end_color):
+       """Draws a vertical background gradient."""
+       self.canvas.delete("all")
+       r1, g1, b1 = self.canvas.winfo_rgb(start_color)
+       r2, g2, b2 = self.canvas.winfo_rgb(end_color)
+       for i in range(height):
+           r = int(r1 + (r2 - r1) * (i / height))
+           g = int(g1 + (g2 - g1) * (i / height))
+           b = int(b1 + (b2 - b1) * (i / height))
+           color = f'#{r // 256:02x}{g // 256:02x}{b // 256:02x}'
+           self.canvas.create_line(0, i, width, i, fill=color)
+
+   def draw_slide(self, event=None):
+       """Draws the current slide's content."""
+       width, height = self.root.winfo_screenwidth(), self.root.winfo_screenheight()
+       self.draw_gradient(width, height, "#0d084d", "#0066cc")
+       if self.current_slide == 1:
+           self.display_text_slide1(width, height)
+       elif self.current_slide == 2:
+           self.display_text_slide2(width, height)
+       elif self.current_slide == 3:
+           self.display_text_slide3(width, height)
+       elif self.current_slide == 4:
+           self.display_text_slide4(width, height)
+       elif self.current_slide == 5:
+           self.display_text_slide5(width, height)
+       elif self.current_slide == 6:
+           self.display_text_slide6(width, height)
+       self.canvas.update_idletasks()
+
+   def next_slide(self):
+       """Handles transitioning to the next slide."""
+       if self.current_slide == 1:
+           self.current_slide = 2
+       elif self.current_slide == 2:
+           # When on slide 2, move to slide 3 only if a file has been selected.
+           if self.file_path:
+               self.current_slide = 3
+           else:
+               messagebox.showwarning("No File Selected", "Please select a file before continuing.")
+               return
+       elif self.current_slide == 3:
+           self.current_slide = 4
+       elif self.current_slide == 4:
+           self.current_slide = 5
+       elif self.current_slide == 5:
+           self.execute_print_job()
+           self.current_slide = 6  # Transition to "printing complete" slide.
+       self.draw_slide()
+
+   def previous_slide(self):
+       """Handles transitioning to the previous slide."""
+       if self.current_slide > 1:
+           self.current_slide -= 1
+           self.draw_slide()
+
+   def display_text_slide1(self, width, height):
+       """Welcome screen with logo, 'By: 12 STEM 4-B' text, and Start button."""
+       self.place_logo(width, height)
+       btn = tk.Button(self.root, text="Start", font=("Tahoma", 30, "bold"),
+                       bg="#debb02", fg="white", command=self.next_slide)
+       self.canvas.create_window(width // 2, height - 100, window=btn)
+
+   def handle_bluetooth(self):
+       """Handles the Bluetooth send method."""
+       messagebox.showinfo("Bluetooth", "Send to: InstaPrint")
+       try:
+           subprocess.Popen(["C:\\PYTHON PROGRAMMING\\receive.bat"], shell=True)
+       except Exception as e:
+           messagebox.showerror("Error", f"Failed to run receive.bat: {str(e)}")
+
+   def display_text_slide2(self, width, height):
+       """File send method selection screen."""
+       self.canvas.delete("all")
+       self.draw_gradient(width, height, "#0d084d", "#0066cc")
+       self.canvas.create_text(width // 2, height // 8, text="Send Your File",
+                               font=("Tahoma", 70, "bold"), fill="white")
+       self.canvas.create_text(width // 2, height // 3.1, text="Choose how you want to send your file",
+                               font=("Tahoma", 32, "bold"), fill="white")
+       self.canvas.create_text(width // 2, int(height * 0.21), text="Device Name: INSTAPRINT",
+                               font=("Tahoma", 30, "bold"), fill="#debb02")
+
+       left_x = width // 3
+       group_y = height - 350
+       self.canvas.create_text(left_x, group_y - 150, text="Send Via:",
+                               font=("Tahoma", 50, "bold"), fill="white")
+       bt_button = tk.Button(self.root, text="Bluetooth", font=("Tahoma", 28, "bold"),
+                             bg="#0099ff", fg="white",
+                             command=lambda: self.select_method("Bluetooth"))
+       self.canvas.create_window(left_x, group_y - 50, window=bt_button, width=200)
+       usb_button = tk.Button(self.root, text="USB", font=("Tahoma", 28, "bold"),
+                              bg="#0099ff", fg="white",
+                              command=lambda: self.select_method("USB"))
+       self.canvas.create_window(left_x, group_y + 40, window=usb_button, width=200)
+
+       right_x = (2 * width) // 3
+       self.canvas.create_text(right_x, group_y - 150, text="Choose File:",
+                               font=("Tahoma", 50, "bold"), fill="white")
+       upload_button = tk.Button(self.root, text="Select File", font=("Tahoma", 28, "bold"),
+                                 bg="#0099ff", fg="white", command=self.handle_file_upload)
+       self.canvas.create_window(right_x, group_y - 10, window=upload_button, width=230)
+
+       # Continue button on slide 2; it will only work if a file has been selected.
+       self.continue_btn = tk.Button(self.root, text="Continue", font=("Tahoma", 30, "bold"),
+                                     bg="#debb02", fg="white", state=tk.DISABLED, command=self.next_slide)
+       self.canvas.create_window(width // 2, height - 75, window=self.continue_btn)
+
+   def select_method(self, method):
+       """Calls the appropriate file send method."""
+       if method == "Bluetooth":
+           self.handle_bluetooth()
+       elif method == "USB":
+           self.handle_usb_transfer()
+
+   def display_text_slide3(self, width, height):
+       """File confirmation screen that shows the selected file, with Back and Continue buttons."""
+       self.canvas.delete("all")
+       self.draw_gradient(width, height, "#0d084d", "#0066cc")
+
+       # Retrieve just the file name from the full path
+       filename = os.path.basename(self.file_path) if self.file_path else "No file uploaded"
+
+       # Display a header message
+       self.canvas.create_text(
+           width // 2, height // 8,
+           text="You have selected the following file:",
+           font=("Tahoma", 50, "bold"), fill="white"
+       )
+
+       # Display the file name
+       self.canvas.create_text(
+           width // 2, height // 2,
+           text=filename,
+           font=("Tahoma", 40, "bold"), fill="#FFD700"
+       )
+
+       # Back button to return to slide 2 and reselect a file if needed.
+       back_btn = tk.Button(self.root, text="Back", font=("Tahoma", 30, "bold"),
+                            bg="#debb02", fg="white", command=self.previous_slide)
+       self.canvas.create_window(width // 2 - 150, height - 100, window=back_btn)
+
+       # Continue button to proceed to the next slide.
+       continue_btn = tk.Button(self.root, text="Continue", font=("Tahoma", 30, "bold"),
+                                bg="#FFD700", fg="white", command=self.next_slide)
+       self.canvas.create_window(width // 2 + 150, height - 100, window=continue_btn)
+
+   def display_text_slide4(self, width, height):
+       """Paper settings screen."""
+       self.canvas.create_text(width // 2 - 350, height // 3 - 145, text="COLOR:",
+                               font=("Tahoma", 50, "bold"), fill="white", anchor=tk.W)
+       color_options = [
+           ("Black and White", "black_and_white", "₱2.00 per page"),
+           ("Colored", "color", "₱3.00 per page")
+       ]
+       for i, (text, value, price) in enumerate(color_options):
+           btn = tk.Radiobutton(self.root, text=f"{text}\n{price}",
+                                variable=self.color_var, value=value,
+                                font=("Tahoma", 25), bg="#0d084d", fg="white",
+                                selectcolor="#0099ff", indicatoron=0,
+                                width=15, height=2)
+           self.canvas.create_window(width // 2 - 350, height // 3 - 40 + (i * 120), window=btn, anchor=tk.W)
+
+       self.canvas.create_text(width // 2 + 50, height // 3 - 145, text="SIZE:",
+                               font=("Tahoma", 50, "bold"), fill="white", anchor=tk.W)
+       size_options = [
+           ("Short", "short", "₱1.00 per page"),
+           ("Long", "long", "₱2.00 per page")
+       ]
+       for i, (text, value, price) in enumerate(size_options):
+           btn = tk.Radiobutton(self.root, text=f"{text}\n{price}",
+                                variable=self.size_var, value=value,
+                                font=("Tahoma", 25), bg="#0d084d", fg="white",
+                                selectcolor="#0099ff", indicatoron=0,
+                                width=15, height=2)
+           self.canvas.create_window(width // 2 + 50, height // 3 - 40 + (i * 120), window=btn, anchor=tk.W)
+
+       self.canvas.create_text(width // 2, height - 380, text="PRINT OPTIONS:",
+                               font=("Tahoma", 50, "bold"), fill="white")
+       print_options = [
+           ("One Copy", "whole_file"),
+           ("Multiple Copies", "copies")
+       ]
+       for i, (text, value) in enumerate(print_options):
+           btn = tk.Radiobutton(self.root, text=text,
+                                variable=self.print_option_var, value=value,
+                                font=("Tahoma", 25), bg="#0d084d", fg="white",
+                                selectcolor="#0099ff", indicatoron=0,
+                                width=15, height=2, command=self.toggle_copies_field)
+           self.canvas.create_window(width // 2 - 150 + (i * 300), height - 280, window=btn, anchor=tk.CENTER)
+
+       # Create the copies entry widget and store its canvas window ID.
+       self.copies_entry = tk.Entry(self.root, textvariable=self.copies_var, font=("Tahoma", 25), width=5)
+       self.copies_entry_window = self.canvas.create_window(width // 2, height - 180, window=self.copies_entry)
+       # Hide it initially if "Whole File" is selected.
+       if self.print_option_var.get() != "copies":
+           self.canvas.itemconfigure(self.copies_entry_window, state="hidden")
+
+       btn = tk.Button(self.root, text="Proceed to Payment", font=("Tahoma", 30, "bold"),
+                       bg="#debb02", fg="white", command=self.next_slide)
+       self.canvas.create_window(width // 2 + 150, height - 100, window=btn)
+       back_btn = tk.Button(self.root, text="Back", font=("Tahoma", 30, "bold"),
+                            bg="#debb02", fg="white", command=self.previous_slide)
+       self.canvas.create_window(width // 2 - 150, height - 100, window=back_btn)
+
+   def toggle_copies_field(self):
+       """Shows or hides the copies entry based on the selected print option."""
+       if self.print_option_var.get() == "copies":
+           # Show the entry widget.
+           self.canvas.itemconfigure(self.copies_entry_window, state="normal")
+       else:
+           # Hide the entry widget and reset copies to 1.
+           self.canvas.itemconfigure(self.copies_entry_window, state="hidden")
+           self.copies_var.set("1")
+
+   def display_text_slide5(self, width, height):
+       """Payment summary screen.
+       Displays a summary table with key details and a separate table for the
+       'Amount to be paid' so users can clearly see the final cost.
+       The 'Confirm Payment' button is enabled only when the net cost is 0.
+       """
+       total_cost = self.calculate_cost()
+       page_count = self.get_page_count()
+       copies = int(self.copies_var.get()) if self.print_option_var.get() == "copies" else 1
+       net_cost = total_cost - self.arduino_balance
+       if net_cost < 0:
+           net_cost = 0.0
+
+       # Build the main summary table with key details.
+       summary_table = ttk.Treeview(self.root, columns=("Setting", "Value"), show="headings", height=8)
+       summary_table.heading("Setting", text="Setting", anchor=tk.CENTER)
+       summary_table.heading("Value", text="Value", anchor=tk.CENTER)
+       summary_table.column("Setting", width=400, anchor=tk.CENTER)
+       summary_table.column("Value", width=400, anchor=tk.CENTER)
+       style = ttk.Style()
+       style.theme_use('clam')
+       style.configure("Treeview", font=("Tahoma", 20), rowheight=40, background="#0d084d", foreground="white")
+       style.configure("Treeview.Heading", font=("Tahoma", 25, "bold"), background="#0099ff", foreground="white")
+       style.map("Treeview", background=[("selected", "#0d084d")])
+
+       summary_table.insert("", "end", values=("File", os.path.basename(self.file_path)))
+       summary_table.insert("", "end", values=("Size", f"{self.size_var.get().capitalize()} (₱{self.prices['size'][self.size_var.get()]:.2f})"))
+       summary_table.insert("", "end", values=("Color",
+                                               f"{self.color_var.get().replace('_', ' ').title()} (₱{self.prices['color'][self.color_var.get()]:.2f})"))
+       summary_table.insert("", "end", values=("Print Option", "Copies" if self.print_option_var.get() == "copies" else "Whole File"))
+       summary_table.insert("", "end", values=("Pages per Copy", page_count))
+       summary_table.insert("", "end", values=("Total Copies", copies))
+       summary_table.insert("", "end", values=("Total Pages", page_count * copies))
+
+       self.canvas.create_window(width // 2, height // 2 - 80, window=summary_table)
+
+       # Build a separate table just for "Amount to be paid"
+       amount_table = ttk.Treeview(self.root, columns=("Amount",), show="headings", height=1)
+       amount_table.heading("Amount", text="Amount to be paid", anchor=tk.CENTER)
+       amount_table.column("Amount", width=800, anchor=tk.CENTER)
+       amount_table.insert("", "end", values=(f"₱{net_cost:.2f}",))
+       self.canvas.create_window(width // 2, height // 1.5 - 3, window=amount_table)
+
+       # Confirm Payment button: enabled only if net cost is 0.
+       btn_state = tk.NORMAL if net_cost == 0 else tk.DISABLED
+       btn = tk.Button(self.root, text="Print Your File", font=("Tahoma", 30, "bold"),
+                       bg="#debb02", fg="white", state=btn_state, command=self.next_slide)
+       # Center the button by using width // 2 instead of width // 2 + 150.
+       self.canvas.create_window(width // 2, height - 100, window=btn)
+
+   def display_text_slide6(self, width, height):
+       """Printing complete screen.
+       Displays the logo in the middle, a text below it prompting the user
+       to press the button when finished printing, and a 'Done Printing' button.
+       Pressing the button resets the machine back to the start.
+       """
+       self.canvas.delete("all")
+       self.draw_gradient(width, height, "#0d084d", "#0066cc")
+       # Place the logo in the center
+       self.canvas.create_image(width // 2, height // 2 - 100, image=self.logo_tk, anchor=tk.CENTER)
+       # Display the instruction text below the logo
+       self.canvas.create_text(width // 2, height // 2 - 1,
+                               text="Press this button when you finish printing",
+                               font=("Tahoma", 40, "bold"), fill="white")
+       # "Done Printing" button resets the machine
+       done_button = tk.Button(self.root, text="Done Printing", font=("Tahoma", 30, "bold"),
+                               bg="#debb02", fg="white", command=self.reset_machine)
+       self.canvas.create_window(width // 2, height - 100, window=done_button)
+
+   def load_image_slide2(self, image_path, size=(300, 300)):
+       """Loads and resizes an image for Slide 2."""
+       return ImageTk.PhotoImage(Image.open(image_path).resize(size))
+
+   def get_page_count(self):
+       """Returns the number of pages if the file is a PDF, else 1."""
+       if self.file_path and self.file_path.lower().endswith(".pdf"):
+           try:
+               with open(self.file_path, "rb") as f:
+                   reader = PdfReader(f)
+                   return len(reader.pages)
+           except Exception as e:
+               print("PDF error:", e)
+               return 1
+       return 1
+
+   def handle_file_upload(self):
+       """Handles file upload from the INSTAPRINT folder."""
+       upload_folder = "C:\\INSTAPRINTMACHINE"
+       if not os.path.exists(upload_folder):
+           os.makedirs(upload_folder)
+       # Only allow PDF and Word files
+       file_path = filedialog.askopenfilename(
+           title="Select a file to upload",
+           initialdir=upload_folder,
+           filetypes=[("PDF Files", "*.pdf"), ("Word Documents", "*.doc;*.docx")]
+       )
+       if file_path:
+           if not file_path.lower().endswith(('.pdf', '.doc', '.docx')):
+               messagebox.showerror("File Error",
+                                    "Selected file type is not supported. Please select a PDF or Microsoft Word document.")
+               return
+           self.file_path = file_path
+           # Enable the continue button now that a file is selected.
+           if hasattr(self, 'continue_btn'):
+               self.continue_btn.config(state=tk.NORMAL)
+
+   def close_usb_explorer(self, drive):
+       """
+       Attempts to close any open File Explorer windows on the USB drive.
+       Requires pywin32.
+       """
+       try:
+           import win32com.client
+           shell = win32com.client.Dispatch("Shell.Application")
+           for window in shell.Windows():
+               try:
+                   location = window.LocationURL
+                   if location and location.startswith("file:/C:\\INSTAPRINT MACHINE///receivet"):
+                       local_path = urllib.parse.unquote(location[8:]).replace('/', '\\')
+                       if os.path.normcase(os.path.abspath(local_path)) == os.path.normcase(os.path.abspath(drive)):
+                           window.Quit()
+               except Exception:
+                   continue
+       except Exception as e:
+           print("Error closing USB explorer windows:", e)
+
+   def handle_usb_transfer(self):
+       """
+       Handles file transfer via USB.
+       Displays a message instructing the user to insert a USB.
+       After the user clicks OK, the application polls for a removable drive.
+       Once a file is detected, a file dialog is opened for the user to select a file.
+       """
+       messagebox.showinfo("USB Transfer", "Please insert a USB")
+       self.usb_dialog_opened = False
+       self.poll_for_usb()
+
+   def poll_for_usb(self):
+       """Polls for a removable USB drive and opens a file dialog when detected."""
+       partitions = psutil.disk_partitions(all=False)
+       usb_drives = []
+       for p in partitions:
+           if 'removable' in p.opts.lower():
+               usb_drives.append(p.device)
+       if usb_drives:
+           drive = usb_drives[0]
+           self.close_usb_explorer(drive)
+           if not self.usb_dialog_opened:
+               self.usb_dialog_opened = True
+               file_selected = filedialog.askopenfilename(
+                   title="Select a file from your USB drive",
+                   initialdir=drive,
+                   filetypes=[("PDF Files", "*.pdf"), ("Word Documents", "*.doc;*.docx")]
+               )
+               if file_selected:
+                   if not file_selected.lower().endswith(('.pdf', '.doc', '.docx')):
+                       messagebox.showerror("File Error",
+                                            "Selected file type is not supported. Please select a PDF or Microsoft Word document.")
+                       self.usb_dialog_opened = False
+                       return
+                   self.file_path = file_selected
+                   messagebox.showinfo("USB Transfer", "File selected successfully!")
+                   # Enable the continue button on slide 2.
+                   if hasattr(self, 'continue_btn'):
+                       self.continue_btn.config(state=tk.NORMAL)
+               else:
+                   messagebox.showerror("USB Transfer", "No file selected. Please try again.")
+                   self.usb_dialog_opened = False
+       else:
+           self.root.after(1000, self.poll_for_usb)
+
+   def place_logo(self, width, height):
+       """Positions the logo on Slide 1."""
+       self.canvas.create_image(width // 2, height // 2 - 50, image=self.logo_tk, anchor=tk.CENTER)
+
+   def calculate_cost(self):
+       """Calculates the total cost based on the selected options."""
+       try:
+           pages = self.get_page_count()
+           copies = int(self.copies_var.get()) if self.print_option_var.get() == "copies" else 1
+           size_price = self.prices['size'][self.size_var.get()]
+           color_price = self.prices['color'][self.color_var.get()]
+           return (size_price + color_price) * pages * copies
+       except Exception:
+           return 0.00
+
+   def execute_print_job(self):
+       """
+       Sends the print job to the short bond printer.
+       This example uses the ShellExecute method.
+       """
+       short_bond_printer = "HP Ink Tank Wireless 410 series"
+       try:
+           win32print.SetDefaultPrinter(short_bond_printer)
+           win32api.ShellExecute(0, "print", self.file_path, None, ".", 0)
+           messagebox.showinfo("Printing", "Print job sent successfully!")
+       except Exception as e:
+           messagebox.showerror("Printing Error", f"Failed to print document: {e}")
+
+   def reset_machine(self):
+       """Resets the machine state so it can start a new print job."""
+       self.current_slide = 1
+       self.file_path = None
+       self.size_var.set("short")
+       self.color_var.set("black_and_white")
+       self.print_option_var.set("whole_file")
+       self.copies_var.set("1")
+       self.draw_slide()
+
+if __name__ == "__main__":
+   root = tk.Tk()
+   app = GradientApp(root)
+   root.mainloop()
