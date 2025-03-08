@@ -13,10 +13,8 @@ import serial
 import time
 from PyPDF2 import PdfReader
 
-
 def set_printer_color(printer_name, color_choice):
-
-    #DevMode of the printers (for the color option)
+    # DevMode of the printers (for the color option)
     hPrinter = None
     try:
         hPrinter = win32print.OpenPrinter(printer_name)
@@ -31,7 +29,7 @@ def set_printer_color(printer_name, color_choice):
 
         # Set color based on the choice.
         if color_choice == "black_and_white":
-            devmode.dmColor = 1  #  Black and White
+            devmode.dmColor = 1  # Black and White
         else:
             devmode.dmColor = 2  # Colored
 
@@ -45,6 +43,12 @@ def set_printer_color(printer_name, color_choice):
         if hPrinter:
             win32print.ClosePrinter(hPrinter)
 
+def create_shadowed_text(canvas, x, y, text, font, text_color, shadow_color, offset=(2, 2)):
+    """Draws text with a shadow by drawing the shadow text first, then the main text."""
+    # Draw shadow text
+    canvas.create_text(x + offset[0], y + offset[1], text=text, font=font, fill=shadow_color)
+    # Draw main text on top
+    canvas.create_text(x, y, text=text, font=font, fill=text_color)
 
 class GradientApp:
     def __init__(self, root):
@@ -63,19 +67,19 @@ class GradientApp:
         # Trace color changes: when user selects "Black and White", update file to grayscale (if PDF)
         self.color_var.trace("w", self.on_color_change)
 
-        # For the prices of the options:
+        # Prices for the options
         self.prices = {
             "size": {"short": 1.00, "long": 2.00},
             "color": {"black_and_white": 2.00, "color": 3.00}
         }
 
-        # How the Arduino (Coin Slot) will function
+        # Arduino (Coin Slot) variables
         self.arduino_balance = 0.0
         self.ser = None
         self.init_serial_connection()
         self.read_serial()  # Start polling serial data
 
-       # For Interface
+        # For Interface: using a tk.Canvas for the gradient background.
         self.canvas = tk.Canvas(root, highlightthickness=0)
         self.canvas.pack(fill=tk.BOTH, expand=True)
 
@@ -87,7 +91,6 @@ class GradientApp:
         self.canvas.bind("<Configure>", self.draw_slide)
 
     def init_serial_connection(self):
-        """Initialize the serial connection to the Arduino."""
         try:
             self.ser = serial.Serial('COM3', 9600, timeout=1)
             time.sleep(2)
@@ -97,36 +100,29 @@ class GradientApp:
             self.ser = None
 
     def read_serial(self):
-        """Poll the serial port for data and update arduino_balance if available."""
         if self.ser is not None:
             try:
                 if self.ser.in_waiting:
                     line = self.ser.readline().decode('utf-8', errors='ignore').strip()
                     print("Serial read:", line)
-
                     if line.startswith("Total Balance:"):
                         parts = line.split()
                         if len(parts) >= 3:
                             try:
                                 self.arduino_balance = float(parts[2])
-                                self.update_payment()  # Refresh the table so user can see the remaining balancec
+                                self.update_payment()
                             except ValueError:
                                 print("Error parsing coin amount")
             except Exception as e:
                 print("Serial read error:", e)
-
         self.root.after(500, self.read_serial)
 
     def update_payment(self):
-        #User can't press the button if there's still remaining balance
-
         total_cost = self.calculate_cost()  # Total cost in pesos
         print(f"Amount to be paid: ₱{total_cost:.2f}, Inserted: ₱{self.arduino_balance:.2f}")
-
         if self.current_slide == 5:
             self.draw_slide()
 
-    #For Interface
     def create_logo(self, image_path, size=400):
         img = Image.open(image_path).convert("RGBA").resize((size, size))
         return ImageTk.PhotoImage(img)
@@ -160,11 +156,9 @@ class GradientApp:
         self.canvas.update_idletasks()
 
     def next_slide(self):
-        #To transition to the next slide
         if self.current_slide == 1:
             self.current_slide = 2
         elif self.current_slide == 2:
-            # When on slide 2, move to slide 3 only if a file has been selected.
             if self.file_path:
                 self.current_slide = 3
             else:
@@ -186,11 +180,13 @@ class GradientApp:
 
     def display_text_slide1(self, width, height):
         self.place_logo(width, height)
+        # Add shadowed text for the "Start" title if desired.
+        create_shadowed_text(self.canvas, width // 2, height - 100, "Start", ("Tahoma", 30, "bold"), "white", "black", (3, 3))
+        # Instead of drawing text, here a button is used; so we leave it as a button.
         btn = tk.Button(self.root, text="Start", font=("Tahoma", 30, "bold"), bg="#debb02", fg="white", command=self.next_slide)
         self.canvas.create_window(width // 2, height - 100, window=btn)
 
     def handle_bluetooth(self):
-        #For Bluetooth to open automatically
         try:
             subprocess.Popen(["C:\\INSTAPRINT MACHINE\\receive.bat"], shell=True)
         except Exception as e:
@@ -199,24 +195,37 @@ class GradientApp:
     def display_text_slide2(self, width, height):
         self.canvas.delete("all")
         self.draw_gradient(width, height, "#0d084d", "#0066cc")
-        self.canvas.create_text(width // 2, height // 8, text="Send Your File", font=("Tahoma", 70, "bold"), fill="white")
-        self.canvas.create_text(width // 2, height // 3.1, text="Choose how you want to send your file", font=("Tahoma", 32, "bold"), fill="white")
-        self.canvas.create_text(width // 2, int(height * 0.21), text="Device Name: INSTAPRINT", font=("Tahoma", 30, "bold"), fill="#debb02")
+        # Add shadowed text for the title "Send Your File"
+        create_shadowed_text(self.canvas, width // 2, height // 8,
+                             "Send Your File", ("Tahoma", 70, "bold"),
+                             "white", "black", (5, 5))
+        # Add shadowed text for the subtitle
+        create_shadowed_text(self.canvas, width // 2, int(height // 2.9),
+                             "Choose how you want to send your file", ("Tahoma", 30, "bold"),
+                             "white", "black", (3, 3))
+        # Add shadowed text for the device name
+        create_shadowed_text(self.canvas, width // 2, int(height * 0.21),
+                             "Device Name: INSTAPRINT", ("Tahoma", 30, "bold"),
+                             "#debb02", "black", (3, 3))
 
         left_x = width // 3
         group_y = height - 350
-        self.canvas.create_text(left_x, group_y - 150, text="Send Via:", font=("Tahoma", 50, "bold"), fill="white")
+        create_shadowed_text(self.canvas, left_x, group_y - 150,
+                             "Send Via:", ("Tahoma", 50, "bold"),
+                             "white", "black", (5, 5))
         bt_button = tk.Button(self.root, text="Bluetooth", font=("Tahoma", 28, "bold"), bg="#0099ff", fg="white", command=lambda: self.select_method("Bluetooth"))
         self.canvas.create_window(left_x, group_y - 50, window=bt_button, width=200)
         usb_button = tk.Button(self.root, text="USB", font=("Tahoma", 28, "bold"), bg="#0099ff", fg="white", command=lambda: self.select_method("USB"))
         self.canvas.create_window(left_x, group_y + 40, window=usb_button, width=200)
 
         right_x = (2 * width) // 3
-        self.canvas.create_text(right_x, group_y - 150, text="Choose File:", font=("Tahoma", 50, "bold"), fill="white")
+        create_shadowed_text(self.canvas, right_x, group_y - 150,
+                             "Choose File:", ("Tahoma", 50, "bold"),
+                             "white", "black", (5, 5))
         upload_button = tk.Button(self.root, text="Select File", font=("Tahoma", 28, "bold"), bg="#0099ff", fg="white", command=self.handle_file_upload)
         self.canvas.create_window(right_x, group_y - 10, window=upload_button, width=230)
 
-        #User need to pay the needed amount in-order to continue
+        # Continue button (inside a button, so no shadow)
         self.continue_btn = tk.Button(self.root, text="Continue", font=("Tahoma", 30, "bold"), bg="#debb02", fg="white", state=tk.DISABLED, command=self.next_slide)
         self.canvas.create_window(width // 2, height - 75, window=self.continue_btn)
 
@@ -229,90 +238,88 @@ class GradientApp:
     def display_text_slide3(self, width, height):
         self.canvas.delete("all")
         self.draw_gradient(width, height, "#0d084d", "#0066cc")
-
         filename = os.path.basename(self.file_path) if self.file_path else "No file uploaded"
-
-        self.canvas.create_text(width // 2, height // 8, text="You have selected the following file:", font=("Tahoma", 50, "bold"), fill="white")
-
-        self.canvas.create_text(width // 2, height // 2, text=filename, font=("Tahoma", 40, "bold"), fill="#FFD700")
-
+        create_shadowed_text(self.canvas, width // 2, height // 8,
+                             "You have selected the following file:", ("Tahoma", 50, "bold"),
+                             "white", "black", (5, 5))
+        create_shadowed_text(self.canvas, width // 2, height // 2,
+                             filename, ("Tahoma", 40, "bold"),
+                             "#FFD700", "black", (3, 3))
         back_btn = tk.Button(self.root, text="Back", font=("Tahoma", 30, "bold"), bg="#debb02", fg="white", command=self.previous_slide)
         self.canvas.create_window(width // 2 - 150, height - 100, window=back_btn)
-
         continue_btn = tk.Button(self.root, text="Continue", font=("Tahoma", 30, "bold"), bg="#FFD700", fg="white", command=self.next_slide)
         self.canvas.create_window(width // 2 + 150, height - 100, window=continue_btn)
 
     def display_text_slide4(self, width, height):
-        #Slide where user can choose the paper's settings
-
-        self.canvas.create_text(width // 2 - 350, height // 3 - 145, text="COLOR:", font=("Tahoma", 50, "bold"), fill="white", anchor=tk.W)
+        # Slide for paper settings
+        create_shadowed_text(self.canvas, width // 1.763 - 350, height // 3 - 145,
+                             "COLOR", ("Tahoma", 50, "bold"),
+                             "white", "black", (5, 5))
         color_options = [
             ("Black and White", "black_and_white", "₱2.00 per page"),
             ("Colored", "color", "₱3.00 per page")
         ]
         for i, (text, value, price) in enumerate(color_options):
-            btn = tk.Radiobutton(
-                self.root,
-                text=f"{text}\n{price}",
-                variable=self.color_var,
-                value=value,
-                font=("Tahoma", 25),
-                bg="#0d084d",
-                fg="white",
-                selectcolor="#0099ff",
-                indicatoron=0,
-                width=15,
-                height=2
-            )
+            # Here we use normal Radiobuttons (no shadow needed)
+            btn = tk.Radiobutton(self.root,
+                                 text=f"{text}\n{price}",
+                                 variable=self.color_var,
+                                 value=value,
+                                 font=("Tahoma", 25),
+                                 bg="#0d084d",
+                                 fg="white",
+                                 selectcolor="#0099ff",
+                                 indicatoron=0,
+                                 width=15,
+                                 height=2)
             self.canvas.create_window(width // 2 - 350, height // 3 - 40 + (i * 120), window=btn, anchor=tk.W)
 
-        self.canvas.create_text(width // 2 + 50, height // 3 - 145, text="SIZE:", font=("Tahoma", 50, "bold"), fill="white", anchor=tk.W)
+        create_shadowed_text(self.canvas, width // 1.761 + 50, height // 3 - 145,
+                             "SIZE", ("Tahoma", 50, "bold"),
+                             "white", "black", (5, 5))
         size_options = [
             ("Short", "short", "₱1.00 per page"),
             ("Long", "long", "₱2.00 per page")
         ]
         for i, (text, value, price) in enumerate(size_options):
-            btn = tk.Radiobutton(
-                self.root,
-                text=f"{text}\n{price}",
-                variable=self.size_var,
-                value=value,
-                font=("Tahoma", 25),
-                bg="#0d084d",
-                fg="white",
-                selectcolor="#0099ff",
-                indicatoron=0,
-                width=15,
-                height=2
-            )
+            btn = tk.Radiobutton(self.root,
+                                 text=f"{text}\n{price}",
+                                 variable=self.size_var,
+                                 value=value,
+                                 font=("Tahoma", 25),
+                                 bg="#0d084d",
+                                 fg="white",
+                                 selectcolor="#0099ff",
+                                 indicatoron=0,
+                                 width=15,
+                                 height=2)
             self.canvas.create_window(width // 2 + 50, height // 3 - 40 + (i * 120), window=btn, anchor=tk.W)
 
-        self.canvas.create_text(width // 2, height - 380, text="NUMBER OF COPIES:", font=("Tahoma", 50, "bold"), fill="white")
+        create_shadowed_text(self.canvas, width // 2, height - 380,
+                             "NUMBER OF COPIES", ("Tahoma", 50, "bold"),
+                             "white", "black", (5, 5))
         print_options = [
             ("One Copy", "whole_file"),
             ("Multiple Copies", "copies")
         ]
         for i, (text, value) in enumerate(print_options):
-            btn = tk.Radiobutton(
-                self.root,
-                text=text,
-                variable=self.print_option_var,
-                value=value,
-                font=("Tahoma", 25),
-                bg="#0d084d",
-                fg="white",
-                selectcolor="#0099ff",
-                indicatoron=0,
-                width=15,
-                height=2,
-                command=self.toggle_copies_field
-            )
+            btn = tk.Radiobutton(self.root,
+                                 text=text,
+                                 variable=self.print_option_var,
+                                 value=value,
+                                 font=("Tahoma", 25),
+                                 bg="#0d084d",
+                                 fg="white",
+                                 selectcolor="#0099ff",
+                                 indicatoron=0,
+                                 width=15,
+                                 height=2,
+                                 command=self.toggle_copies_field)
             self.canvas.create_window(width // 2 - 150 + (i * 300), height - 280, window=btn, anchor=tk.CENTER)
 
-        # For the "Multiple Copies" button.
+        # For "Multiple Copies" Spinbox (no shadow since it's a widget)
         self.copies_spinbox = tk.Spinbox(self.root, textvariable=self.copies_var, font=("Tahoma", 25), width=5, from_=1, to=100, increment=1)
         self.copies_spinbox_window = self.canvas.create_window(width // 2, height - 180, window=self.copies_spinbox)
-
         if self.print_option_var.get() != "copies":
             self.canvas.itemconfigure(self.copies_spinbox_window, state="hidden")
 
@@ -323,26 +330,19 @@ class GradientApp:
         self.canvas.create_window(width // 2 - 150, height - 100, window=back_btn)
 
     def validate_and_proceed(self):
-        #Shows a warning when a user hasn't completed choosing the paper's option
-
         if not self.color_var.get() or not self.size_var.get() or not self.print_option_var.get():
             messagebox.showwarning("Incomplete Selection", "Please select a Color, Size, and Print Option before proceeding.")
             return
         self.next_slide()
 
     def toggle_copies_field(self):
-
         if self.print_option_var.get() == "copies":
-
             self.canvas.itemconfigure(self.copies_spinbox_window, state="normal")
         else:
-
             self.canvas.itemconfigure(self.copies_spinbox_window, state="hidden")
             self.copies_var.set("1")
 
     def display_text_slide5(self, width, height):
-        # A table is shown for the total cost of everything
-
         total_cost = self.calculate_cost()
         page_count = self.get_page_count()
         copies = int(self.copies_var.get()) if self.print_option_var.get() == "copies" else 1
@@ -350,7 +350,7 @@ class GradientApp:
         if net_cost < 0:
             net_cost = 0.0
 
-        # Build the main summary table with key details.
+        # Here we are using a Treeview for the summary table so we don't add shadows to its text.
         summary_table = ttk.Treeview(self.root, columns=("SETTINGS", "DETAILS"), show="headings", height=5)
         summary_table.heading("SETTINGS", text="SETTINGS", anchor=tk.CENTER)
         summary_table.heading("DETAILS", text="DETAILS", anchor=tk.CENTER)
@@ -358,38 +358,34 @@ class GradientApp:
         summary_table.column("DETAILS", width=400, anchor=tk.CENTER)
         style = ttk.Style()
         style.theme_use('clam')
-        style.configure("Treeview", font=("Tahoma", 20), rowheight=55, background="#0d084d", foreground="white")
+        style.configure("Treeview", font=("Tahoma", 20), rowheight=65, background="#0d084d", foreground="white")
         style.configure("Treeview.Heading", font=("Tahoma", 25, "bold"), background="#0099ff", foreground="white")
         style.map("Treeview", background=[("selected", "#0d084d")])
-
         summary_table.insert("", "end", values=("FILE", os.path.basename(self.file_path)))
         summary_table.insert("", "end", values=("SIZE", f"{self.size_var.get().capitalize()} (₱{self.prices['size'][self.size_var.get()]:.2f})"))
         summary_table.insert("", "end", values=("COLOR", f"{self.color_var.get().replace('_', ' ').title()} (₱{self.prices['color'][self.color_var.get()]:.2f})"))
         summary_table.insert("", "end", values=("NUMBER OF COPIES", copies))
         summary_table.insert("", "end", values=("TOTAL PAGES", page_count * copies))
+        self.canvas.create_window(width // 2, height // 2 - 110, window=summary_table)
 
-        self.canvas.create_window(width // 2, height // 2 - 75, window=summary_table)
-
-        #Seperate table for the Amount to be paid table
+        # Amount table (no shadow as it's inside a table)
         amount_table = ttk.Treeview(self.root, columns=("Amount",), show="headings", height=1)
         amount_table.heading("Amount", text="AMOUNT TO BE PAID", anchor=tk.CENTER)
         amount_table.column("Amount", width=800, anchor=tk.CENTER)
         amount_table.insert("", "end", values=(f"₱{net_cost:.2f}",))
         self.canvas.create_window(width // 2, height // 1.5 - 3, window=amount_table)
 
-        # Confirm Payment button: enabled only if net cost is 0.
         btn_state = tk.NORMAL if net_cost == 0 else tk.DISABLED
         btn = tk.Button(self.root, text="Print Your File", font=("Tahoma", 30, "bold"), bg="#debb02", fg="white", state=btn_state, command=self.next_slide)
         self.canvas.create_window(width // 2, height - 100, window=btn)
 
     def display_text_slide6(self, width, height):
-        #Last slide where user is prompt to wait for the printer to finish printing
         self.canvas.delete("all")
         self.draw_gradient(width, height, "#0d084d", "#0066cc")
-        #For Interface
         self.canvas.create_image(width // 2, height // 2 - 100, image=self.logo_tk, anchor=tk.CENTER)
-        self.canvas.create_text(width // 2, height // 1.38 - 1, text="Press the button when you finish printing", font=("Tahoma", 30, "bold"), fill="white")
-        #If pressed user will get redirected to the beginning
+        create_shadowed_text(self.canvas, width // 2, int(height // 1.38) - 1,
+                             "Press the button when you finish printing", ("Tahoma", 30, "bold"),
+                             "white", "black", (3, 3))
         done_button = tk.Button(self.root, text="Done Printing", font=("Tahoma", 30, "bold"), bg="#debb02", fg="white", command=self.reset_machine)
         self.canvas.create_window(width // 2, height - 100, window=done_button)
 
@@ -397,7 +393,6 @@ class GradientApp:
         return ImageTk.PhotoImage(Image.open(image_path).resize(size))
 
     def get_page_count(self):
-        """Returns the number of pages if the file is a PDF, else 1."""
         if self.file_path and self.file_path.lower().endswith(".pdf"):
             try:
                 with open(self.file_path, "rb") as f:
@@ -409,11 +404,9 @@ class GradientApp:
         return 1
 
     def handle_file_upload(self):
-        """Handles file upload from the INSTAPRINT folder."""
         upload_folder = "C:\\INSTAPRINTMACHINE"
         if not os.path.exists(upload_folder):
             os.makedirs(upload_folder)
-        # Only allow PDF and Word files
         file_path = filedialog.askopenfilename(
             title="Select a file to upload",
             initialdir=upload_folder,
@@ -424,12 +417,10 @@ class GradientApp:
                 messagebox.showerror("File Error", "Selected file type is not supported. Please select a PDF or Microsoft Word document.")
                 return
             self.file_path = file_path
-            # Enable the continue button now that a file is selected.
             if hasattr(self, 'continue_btn'):
                 self.continue_btn.config(state=tk.NORMAL)
 
     def close_usb_explorer(self, drive):
-        #opens the Bluetooth automatically
         try:
             import win32com.client
             shell = win32com.client.Dispatch("Shell.Application")
@@ -445,14 +436,12 @@ class GradientApp:
         except Exception as e:
             print("Error closing USB explorer windows:", e)
 
-    #Send Via Bluetooth or USB option
     def handle_usb_transfer(self):
         messagebox.showinfo("USB Transfer", "Please insert a USB")
         self.usb_dialog_opened = False
         self.poll_for_usb()
 
     def poll_for_usb(self):
-        """Polls for a removable USB drive and opens a file dialog when detected."""
         partitions = psutil.disk_partitions(all=False)
         usb_drives = []
         for p in partitions:
@@ -466,7 +455,6 @@ class GradientApp:
                 print(f"Drive not found or not ready: {drive}")
                 self.root.after(1000, self.poll_for_usb)
                 return
-
             self.close_usb_explorer(drive)
             if not self.usb_dialog_opened:
                 self.usb_dialog_opened = True
@@ -489,11 +477,10 @@ class GradientApp:
                     self.usb_dialog_opened = False
         else:
             self.root.after(1000, self.poll_for_usb)
-    #For Design
+
     def place_logo(self, width, height):
         self.canvas.create_image(width // 2, height // 2 - 50, image=self.logo_tk, anchor=tk.CENTER)
 
-    #For calculating the whole cost of the user's options
     def calculate_cost(self):
         try:
             pages = self.get_page_count()
@@ -504,16 +491,13 @@ class GradientApp:
         except Exception:
             return 0.00
 
-    #For the printers
     def execute_print_job(self):
-        # Determine printer based on size selection.
         if self.size_var.get() == "short":
             printer_name = "EPSON L120 Series"
         elif self.size_var.get() == "long":
             printer_name = "LONG_BOND_PRINTER_NAME"
         else:
-            printer_name = "EPSON L120 Series"  #When error, it will be printed here
-
+            printer_name = "EPSON L120 Series"
         set_printer_color(printer_name, self.color_var.get())
         try:
             win32print.SetDefaultPrinter(printer_name)
@@ -524,11 +508,6 @@ class GradientApp:
             messagebox.showerror("Printing Error", f"Failed to print document: {e}")
 
     def reset_machine(self):
-        """
-        Resets the machine state so it can start a new print job.
-        Additionally, deletes the file from the folder to protect privacy.
-        """
-        # Delete the printed file if it exists.
         if self.file_path and os.path.exists(self.file_path):
             try:
                 os.remove(self.file_path)
@@ -537,18 +516,13 @@ class GradientApp:
                 print(f"Error deleting file: {e}")
         else:
             print("No file found to delete.")
-
-    def reset_machine(self):
-        #Resets the machine and goes back from the start
         self.current_slide = 1
         self.file_path = None
         self.size_var.set("")
         self.color_var.set("")
         self.print_option_var.set("")
         self.copies_var.set("1")
-        # Reset coin balance to 0 so that next user must pay the full amount.
         self.arduino_balance = 0.0
-
         if self.ser:
             try:
                 self.ser.reset_input_buffer()
@@ -557,12 +531,10 @@ class GradientApp:
         self.draw_slide()
 
     def on_color_change(self, *args):
-
         if self.color_var.get() == "black_and_white" and self.file_path and self.file_path.lower().endswith(".pdf"):
             self.file_path = self.convert_pdf_to_grayscale(self.file_path)
 
     def convert_pdf_to_grayscale(self, input_pdf):
-        #Uses Ghostscript to translate files into grayscale
         gray_file = os.path.splitext(input_pdf)[0] + "_grayscale.pdf"
         gs_command = [
             "C:/INSTAPRINT MACHINE/gs10.04.0/bin/gswin64c.exe",
@@ -589,4 +561,4 @@ if __name__ == "__main__":
     app = GradientApp(root)
     root.mainloop()
 
-#We worked hard for this machine!! LEZ GO 12-STEM 4-B GRAHGRAHH!!!
+# We worked hard for this machine!! LEZ GO 12-STEM 4-B GRAHGRAHH!!!
