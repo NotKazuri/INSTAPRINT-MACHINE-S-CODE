@@ -1,0 +1,566 @@
+import tkinter as tk
+from tkinter import ttk, filedialog, messagebox
+from PIL import Image, ImageTk, ImageOps
+import os
+import subprocess
+import shutil
+import psutil
+import urllib.parse
+import win32api
+import win32print
+import win32con
+import serial
+import time
+from PyPDF2 import PdfReader
+
+def set_printer_color(printer_name, color_choice):
+    # DevMode of the printers (for the color option)
+    hPrinter = None
+    try:
+        hPrinter = win32print.OpenPrinter(printer_name)
+        properties = win32print.GetPrinter(hPrinter, 2)
+        devmode = properties["pDevMode"]
+
+        # Check if dmFields is available
+        if hasattr(devmode, "dmFields"):
+            devmode.dmFields |= win32con.DM_COLOR
+        else:
+            print("dmFields attribute not found; proceeding without updating dmFields.")
+
+        # Set color based on the choice.
+        if color_choice == "black_and_white":
+            devmode.dmColor = 1  # Black and White
+        else:
+            devmode.dmColor = 2  # Colored
+
+        win32print.DocumentProperties(
+            None, hPrinter, printer_name, devmode, devmode,
+            win32print.DM_IN_BUFFER | win32print.DM_OUT_BUFFER
+        )
+    except Exception as e:
+        print("Error setting printer color:", e)
+    finally:
+        if hPrinter:
+            win32print.ClosePrinter(hPrinter)
+
+def create_shadowed_text(canvas, x, y, text, font, text_color, shadow_color, offset=(2, 2)):
+    """Draws text with a shadow by drawing the shadow text first, then the main text."""
+    # Draw shadow text
+    canvas.create_text(x + offset[0], y + offset[1], text=text, font=font, fill=shadow_color)
+    # Draw main text on top
+    canvas.create_text(x, y, text=text, font=font, fill=text_color)
+
+class GradientApp:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("InstaPrint Machine")
+        self.root.attributes('-fullscreen', True)
+
+        self.current_slide = 1
+        self.file_path = None
+        self.size_var = tk.StringVar()
+        self.color_var = tk.StringVar()
+        self.print_option_var = tk.StringVar()
+        self.copies_var = tk.StringVar(value="1")
+        self.usb_dialog_opened = False  # Ensures USB file dialog opens only once
+
+        # Trace color changes: when user selects "Black and White", update file to grayscale (if PDF)
+        self.color_var.trace("w", self.on_color_change)
+
+        # Prices for the options
+        self.prices = {
+            "size": {"short": 1.00, "long": 2.00},
+            "color": {"black_and_white": 2.00, "color": 3.00}
+        }
+
+        # Arduino (Coin Slot) variables
+        self.arduino_balance = 0.0
+        self.ser = None
+        self.init_serial_connection()
+        self.read_serial()  # Start polling serial data
+
+        # For Interface: using a tk.Canvas for the gradient background.
+        self.canvas = tk.Canvas(root, highlightthickness=0)
+        self.canvas.pack(fill=tk.BOTH, expand=True)
+
+        self.logo_path = "INSTAPRINT MAIN LOGO.png"
+        self.logo_tk = self.create_logo(self.logo_path, size=700)
+
+        self.draw_slide()
+        self.root.bind("<Escape>", lambda e: root.destroy())
+        self.canvas.bind("<Configure>", self.draw_slide)
+
+    def init_serial_connection(self):
+        try:
+            self.ser = serial.Serial('COM3', 9600, timeout=1)
+            time.sleep(2)
+            print("Serial connection established at 9600 baud.")
+        except Exception as e:
+            messagebox.showerror("Serial Error", f"Failed to open serial port: {e}")
+            self.ser = None
+
+    def read_serial(self):
+        if self.ser is not None:
+            try:
+                if self.ser.in_waiting:
+                    line = self.ser.readline().decode('utf-8', errors='ignore').strip()
+                    print("Serial read:", line)
+                    if line.startswith("Total Balance:"):
+                        parts = line.split()
+                        if len(parts) >= 3:
+                            try:
+                                self.arduino_balance = float(parts[2])
+                                self.update_payment()
+                            except ValueError:
+                                print("Error parsing coin amount")
+            except Exception as e:
+                print("Serial read error:", e)
+        self.root.after(500, self.read_serial)
+
+    def update_payment(self):
+        total_cost = self.calculate_cost()  # Total cost in pesos
+        print(f"Amount to be paid: ₱{total_cost:.2f}, Inserted: ₱{self.arduino_balance:.2f}")
+        if self.current_slide == 5:
+            self.draw_slide()
+
+    def create_logo(self, image_path, size=400):
+        img = Image.open(image_path).convert("RGBA").resize((size, size))
+        return ImageTk.PhotoImage(img)
+
+    def draw_gradient(self, width, height, start_color, end_color):
+        self.canvas.delete("all")
+        r1, g1, b1 = self.canvas.winfo_rgb(start_color)
+        r2, g2, b2 = self.canvas.winfo_rgb(end_color)
+        for i in range(height):
+            r = int(r1 + (r2 - r1) * (i / height))
+            g = int(g1 + (g2 - g1) * (i / height))
+            b = int(b1 + (b2 - b1) * (i / height))
+            color = f'#{r // 256:02x}{g // 256:02x}{b // 256:02x}'
+            self.canvas.create_line(0, i, width, i, fill=color)
+
+    def draw_slide(self, event=None):
+        width, height = self.root.winfo_screenwidth(), self.root.winfo_screenheight()
+        self.draw_gradient(width, height, "#0d084d", "#0066cc")
+        if self.current_slide == 1:
+            self.display_text_slide1(width, height)
+        elif self.current_slide == 2:
+            self.display_text_slide2(width, height)
+        elif self.current_slide == 3:
+            self.display_text_slide3(width, height)
+        elif self.current_slide == 4:
+            self.display_text_slide4(width, height)
+        elif self.current_slide == 5:
+            self.display_text_slide5(width, height)
+        elif self.current_slide == 6:
+            self.display_text_slide6(width, height)
+        self.canvas.update_idletasks()
+
+    def next_slide(self):
+        if self.current_slide == 1:
+            self.current_slide = 2
+        elif self.current_slide == 2:
+            if self.file_path:
+                self.current_slide = 3
+            else:
+                messagebox.showwarning("No File Selected", "Please select a file before continuing.")
+                return
+        elif self.current_slide == 3:
+            self.current_slide = 4
+        elif self.current_slide == 4:
+            self.current_slide = 5
+        elif self.current_slide == 5:
+            self.execute_print_job()
+            self.current_slide = 6
+        self.draw_slide()
+
+    def previous_slide(self):
+        if self.current_slide > 1:
+            self.current_slide -= 1
+            self.draw_slide()
+
+    def display_text_slide1(self, width, height):
+        self.place_logo(width, height)
+        # Add shadowed text for the "Start" title if desired.
+        create_shadowed_text(self.canvas, width // 2, height - 100, "Start", ("Tahoma", 30, "bold"), "white", "black", (3, 3))
+        # Instead of drawing text, here a button is used; so we leave it as a button.
+        btn = tk.Button(self.root, text="Start", font=("Tahoma", 30, "bold"), bg="#debb02", fg="white", command=self.next_slide)
+        self.canvas.create_window(width // 2, height - 100, window=btn)
+
+    def handle_bluetooth(self):
+        try:
+            subprocess.Popen(["C:\\INSTAPRINT MACHINE\\receive.bat"], shell=True)
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to run receive.bat: {str(e)}")
+
+    def display_text_slide2(self, width, height):
+        self.canvas.delete("all")
+        self.draw_gradient(width, height, "#0d084d", "#0066cc")
+        # Add shadowed text for the title "Send Your File"
+        create_shadowed_text(self.canvas, width // 2, height // 8,
+                             "Send Your File", ("Tahoma", 70, "bold"),
+                             "white", "black", (5, 5))
+        # Add shadowed text for the subtitle
+        create_shadowed_text(self.canvas, width // 2, int(height // 2.9),
+                             "Choose how you want to send your file", ("Tahoma", 30, "bold"),
+                             "white", "black", (3, 3))
+        # Add shadowed text for the device name
+        create_shadowed_text(self.canvas, width // 2, int(height * 0.21),
+                             "Device Name: INSTAPRINT", ("Tahoma", 30, "bold"),
+                             "#debb02", "black", (3, 3))
+
+        left_x = width // 3
+        group_y = height - 350
+        create_shadowed_text(self.canvas, left_x, group_y - 150,
+                             "Send Via:", ("Tahoma", 50, "bold"),
+                             "white", "black", (5, 5))
+        bt_button = tk.Button(self.root, text="Bluetooth", font=("Tahoma", 28, "bold"), bg="#0099ff", fg="white", command=lambda: self.select_method("Bluetooth"))
+        self.canvas.create_window(left_x, group_y - 50, window=bt_button, width=200)
+        usb_button = tk.Button(self.root, text="USB", font=("Tahoma", 28, "bold"), bg="#0099ff", fg="white", command=lambda: self.select_method("USB"))
+        self.canvas.create_window(left_x, group_y + 40, window=usb_button, width=200)
+
+        right_x = (2 * width) // 3
+        create_shadowed_text(self.canvas, right_x, group_y - 150,
+                             "Choose File:", ("Tahoma", 50, "bold"),
+                             "white", "black", (5, 5))
+        upload_button = tk.Button(self.root, text="Select File", font=("Tahoma", 28, "bold"), bg="#0099ff", fg="white", command=self.handle_file_upload)
+        self.canvas.create_window(right_x, group_y - 10, window=upload_button, width=230)
+
+        # Continue button (inside a button, so no shadow)
+        self.continue_btn = tk.Button(self.root, text="Continue", font=("Tahoma", 30, "bold"), bg="#debb02", fg="white", state=tk.DISABLED, command=self.next_slide)
+        self.canvas.create_window(width // 2, height - 75, window=self.continue_btn)
+
+    def select_method(self, method):
+        if method == "Bluetooth":
+            self.handle_bluetooth()
+        elif method == "USB":
+            self.handle_usb_transfer()
+
+    def display_text_slide3(self, width, height):
+        self.canvas.delete("all")
+        self.draw_gradient(width, height, "#0d084d", "#0066cc")
+        filename = os.path.basename(self.file_path) if self.file_path else "No file uploaded"
+        create_shadowed_text(self.canvas, width // 2, height // 8,
+                             "You have selected the following file:", ("Tahoma", 50, "bold"),
+                             "white", "black", (5, 5))
+        create_shadowed_text(self.canvas, width // 2, height // 2,
+                             filename, ("Tahoma", 40, "bold"),
+                             "#FFD700", "black", (3, 3))
+        back_btn = tk.Button(self.root, text="Back", font=("Tahoma", 30, "bold"), bg="#debb02", fg="white", command=self.previous_slide)
+        self.canvas.create_window(width // 2 - 150, height - 100, window=back_btn)
+        continue_btn = tk.Button(self.root, text="Continue", font=("Tahoma", 30, "bold"), bg="#FFD700", fg="white", command=self.next_slide)
+        self.canvas.create_window(width // 2 + 150, height - 100, window=continue_btn)
+
+    def display_text_slide4(self, width, height):
+        # Slide for paper settings
+        create_shadowed_text(self.canvas, width // 1.763 - 350, height // 3 - 145,
+                             "COLOR", ("Tahoma", 50, "bold"),
+                             "white", "black", (5, 5))
+        color_options = [
+            ("Black and White", "black_and_white", "₱2.00 per page"),
+            ("Colored", "color", "₱3.00 per page")
+        ]
+        for i, (text, value, price) in enumerate(color_options):
+            # Here we use normal Radiobuttons (no shadow needed)
+            btn = tk.Radiobutton(self.root,
+                                 text=f"{text}\n{price}",
+                                 variable=self.color_var,
+                                 value=value,
+                                 font=("Tahoma", 25),
+                                 bg="#0d084d",
+                                 fg="white",
+                                 selectcolor="#0099ff",
+                                 indicatoron=0,
+                                 width=15,
+                                 height=2)
+            self.canvas.create_window(width // 2 - 350, height // 3 - 40 + (i * 120), window=btn, anchor=tk.W)
+
+        create_shadowed_text(self.canvas, width // 1.761 + 50, height // 3 - 145,
+                             "SIZE", ("Tahoma", 50, "bold"),
+                             "white", "black", (5, 5))
+        size_options = [
+            ("Short", "short", "₱1.00 per page"),
+            ("Long", "long", "₱2.00 per page")
+        ]
+        for i, (text, value, price) in enumerate(size_options):
+            btn = tk.Radiobutton(self.root,
+                                 text=f"{text}\n{price}",
+                                 variable=self.size_var,
+                                 value=value,
+                                 font=("Tahoma", 25),
+                                 bg="#0d084d",
+                                 fg="white",
+                                 selectcolor="#0099ff",
+                                 indicatoron=0,
+                                 width=15,
+                                 height=2)
+            self.canvas.create_window(width // 2 + 50, height // 3 - 40 + (i * 120), window=btn, anchor=tk.W)
+
+        create_shadowed_text(self.canvas, width // 2, height - 380,
+                             "NUMBER OF COPIES", ("Tahoma", 50, "bold"),
+                             "white", "black", (5, 5))
+        print_options = [
+            ("One Copy", "whole_file"),
+            ("Multiple Copies", "copies")
+        ]
+        for i, (text, value) in enumerate(print_options):
+            btn = tk.Radiobutton(self.root,
+                                 text=text,
+                                 variable=self.print_option_var,
+                                 value=value,
+                                 font=("Tahoma", 25),
+                                 bg="#0d084d",
+                                 fg="white",
+                                 selectcolor="#0099ff",
+                                 indicatoron=0,
+                                 width=15,
+                                 height=2,
+                                 command=self.toggle_copies_field)
+            self.canvas.create_window(width // 2 - 150 + (i * 300), height - 280, window=btn, anchor=tk.CENTER)
+
+        # For "Multiple Copies" Spinbox (no shadow since it's a widget)
+        self.copies_spinbox = tk.Spinbox(self.root, textvariable=self.copies_var, font=("Tahoma", 25), width=5, from_=1, to=100, increment=1)
+        self.copies_spinbox_window = self.canvas.create_window(width // 2, height - 180, window=self.copies_spinbox)
+        if self.print_option_var.get() != "copies":
+            self.canvas.itemconfigure(self.copies_spinbox_window, state="hidden")
+
+        btn = tk.Button(self.root, text="Proceed to Payment", font=("Tahoma", 30, "bold"), bg="#debb02", fg="white", command=self.validate_and_proceed)
+        self.canvas.create_window(width // 2 + 150, height - 100, window=btn)
+
+        back_btn = tk.Button(self.root, text="Back", font=("Tahoma", 30, "bold"), bg="#debb02", fg="white", command=self.previous_slide)
+        self.canvas.create_window(width // 2 - 150, height - 100, window=back_btn)
+
+    def validate_and_proceed(self):
+        if not self.color_var.get() or not self.size_var.get() or not self.print_option_var.get():
+            messagebox.showwarning("Incomplete Selection", "Please select a Color, Size, and Print Option before proceeding.")
+            return
+        self.next_slide()
+
+    def toggle_copies_field(self):
+        if self.print_option_var.get() == "copies":
+            self.canvas.itemconfigure(self.copies_spinbox_window, state="normal")
+        else:
+            self.canvas.itemconfigure(self.copies_spinbox_window, state="hidden")
+            self.copies_var.set("1")
+
+    def display_text_slide5(self, width, height):
+        total_cost = self.calculate_cost()
+        page_count = self.get_page_count()
+        copies = int(self.copies_var.get()) if self.print_option_var.get() == "copies" else 1
+        net_cost = total_cost - self.arduino_balance
+        if net_cost < 0:
+            net_cost = 0.0
+
+        # Here we are using a Treeview for the summary table so we don't add shadows to its text.
+        summary_table = ttk.Treeview(self.root, columns=("SETTINGS", "DETAILS"), show="headings", height=5)
+        summary_table.heading("SETTINGS", text="SETTINGS", anchor=tk.CENTER)
+        summary_table.heading("DETAILS", text="DETAILS", anchor=tk.CENTER)
+        summary_table.column("SETTINGS", width=400, anchor=tk.CENTER)
+        summary_table.column("DETAILS", width=400, anchor=tk.CENTER)
+        style = ttk.Style()
+        style.theme_use('clam')
+        style.configure("Treeview", font=("Tahoma", 20), rowheight=65, background="#0d084d", foreground="white")
+        style.configure("Treeview.Heading", font=("Tahoma", 25, "bold"), background="#0099ff", foreground="white")
+        style.map("Treeview", background=[("selected", "#0d084d")])
+        summary_table.insert("", "end", values=("FILE", os.path.basename(self.file_path)))
+        summary_table.insert("", "end", values=("SIZE", f"{self.size_var.get().capitalize()} (₱{self.prices['size'][self.size_var.get()]:.2f})"))
+        summary_table.insert("", "end", values=("COLOR", f"{self.color_var.get().replace('_', ' ').title()} (₱{self.prices['color'][self.color_var.get()]:.2f})"))
+        summary_table.insert("", "end", values=("NUMBER OF COPIES", copies))
+        summary_table.insert("", "end", values=("TOTAL PAGES", page_count * copies))
+        self.canvas.create_window(width // 2, height // 2 - 110, window=summary_table)
+
+        # Amount table (no shadow as it's inside a table)
+        amount_table = ttk.Treeview(self.root, columns=("Amount",), show="headings", height=1)
+        amount_table.heading("Amount", text="AMOUNT TO BE PAID", anchor=tk.CENTER)
+        amount_table.column("Amount", width=800, anchor=tk.CENTER)
+        amount_table.insert("", "end", values=(f"₱{net_cost:.2f}",))
+        self.canvas.create_window(width // 2, height // 1.5 - 3, window=amount_table)
+
+        # Instead of enabling the button only when net_cost is 0, we force it to be enabled:
+        btn_state = tk.NORMAL
+
+        btn = tk.Button(self.root, text="Print Your File", font=("Tahoma", 30, "bold"), bg="#debb02", fg="white", state=btn_state, command=self.next_slide)
+        self.canvas.create_window(width // 2, height - 100, window=btn)
+
+    def display_text_slide6(self, width, height):
+        self.canvas.delete("all")
+        self.draw_gradient(width, height, "#0d084d", "#0066cc")
+        self.canvas.create_image(width // 2, height // 2 - 100, image=self.logo_tk, anchor=tk.CENTER)
+        create_shadowed_text(self.canvas, width // 2, int(height // 1.38) - 1,
+                             "Press the button when you finish printing", ("Tahoma", 30, "bold"),
+                             "white", "black", (3, 3))
+        done_button = tk.Button(self.root, text="Done Printing", font=("Tahoma", 30, "bold"), bg="#debb02", fg="white", command=self.reset_machine)
+        self.canvas.create_window(width // 2, height - 100, window=done_button)
+
+    def load_image_slide2(self, image_path, size=(300, 300)):
+        return ImageTk.PhotoImage(Image.open(image_path).resize(size))
+
+    def get_page_count(self):
+        if self.file_path and self.file_path.lower().endswith(".pdf"):
+            try:
+                with open(self.file_path, "rb") as f:
+                    reader = PdfReader(f)
+                    return len(reader.pages)
+            except Exception as e:
+                print("PDF error:", e)
+                return 1
+        return 1
+
+    def handle_file_upload(self):
+        upload_folder = "C:\\INSTAPRINTMACHINE"
+        if not os.path.exists(upload_folder):
+            os.makedirs(upload_folder)
+        file_path = filedialog.askopenfilename(
+            title="Select a file to upload",
+            initialdir=upload_folder,
+            filetypes=[("PDF Files", "*.pdf"), ("Word Documents", "*.doc;*.docx")]
+        )
+        if file_path:
+            if not file_path.lower().endswith(('.pdf', '.doc', '.docx')):
+                messagebox.showerror("File Error", "Selected file type is not supported. Please select a PDF or Microsoft Word document.")
+                return
+            self.file_path = file_path
+            if hasattr(self, 'continue_btn'):
+                self.continue_btn.config(state=tk.NORMAL)
+
+    def close_usb_explorer(self, drive):
+        try:
+            import win32com.client
+            shell = win32com.client.Dispatch("Shell.Application")
+            for window in shell.Windows():
+                try:
+                    location = window.LocationURL
+                    if location and location.startswith("file:/C:\\INSTAPRINT MACHINE///receivet"):
+                        local_path = urllib.parse.unquote(location[8:]).replace('/', '\\')
+                        if os.path.normcase(os.path.abspath(local_path)) == os.path.normcase(os.path.abspath(drive)):
+                            window.Quit()
+                except Exception:
+                    continue
+        except Exception as e:
+            print("Error closing USB explorer windows:", e)
+
+    def handle_usb_transfer(self):
+        messagebox.showinfo("USB Transfer", "Please insert a USB")
+        self.usb_dialog_opened = False
+        self.poll_for_usb()
+
+    def poll_for_usb(self):
+        partitions = psutil.disk_partitions(all=False)
+        usb_drives = []
+        for p in partitions:
+            if 'removable' in p.opts.lower():
+                usb_drives.append(p.device)
+        if usb_drives:
+            drive = usb_drives[0]
+            if not drive.endswith("\\"):
+                drive += "\\"
+            if not os.path.exists(drive):
+                print(f"Drive not found or not ready: {drive}")
+                self.root.after(1000, self.poll_for_usb)
+                return
+            self.close_usb_explorer(drive)
+            if not self.usb_dialog_opened:
+                self.usb_dialog_opened = True
+                file_selected = filedialog.askopenfilename(
+                    title="Select a file from your USB drive",
+                    initialdir=drive,
+                    filetypes=[("PDF Files", "*.pdf"), ("Word Documents", "*.doc;*.docx")]
+                )
+                if file_selected:
+                    if not file_selected.lower().endswith(('.pdf', '.doc', '.docx')):
+                        messagebox.showerror("File Error", "Selected file type is not supported. Please select a PDF or Microsoft Word document.")
+                        self.usb_dialog_opened = False
+                        return
+                    self.file_path = file_selected
+                    messagebox.showinfo("USB Transfer", "File selected successfully!")
+                    if hasattr(self, 'continue_btn'):
+                        self.continue_btn.config(state=tk.NORMAL)
+                else:
+                    messagebox.showerror("USB Transfer", "No file selected. Please try again.")
+                    self.usb_dialog_opened = False
+        else:
+            self.root.after(1000, self.poll_for_usb)
+
+    def place_logo(self, width, height):
+        self.canvas.create_image(width // 2, height // 2 - 50, image=self.logo_tk, anchor=tk.CENTER)
+
+    def calculate_cost(self):
+        try:
+            pages = self.get_page_count()
+            copies = int(self.copies_var.get()) if self.print_option_var.get() == "copies" else 1
+            size_price = self.prices['size'][self.size_var.get()]
+            color_price = self.prices['color'][self.color_var.get()]
+            return (size_price + color_price) * pages * copies
+        except Exception:
+            return 0.00
+
+    def execute_print_job(self):
+        if self.size_var.get() == "short":
+            printer_name = "EPSON L120 Series"
+        elif self.size_var.get() == "long":
+            printer_name = "LONG_BOND_PRINTER_NAME"
+        else:
+            printer_name = "EPSON L120 Series"
+        set_printer_color(printer_name, self.color_var.get())
+        try:
+            win32print.SetDefaultPrinter(printer_name)
+            copies = int(self.copies_var.get()) if self.print_option_var.get() == "copies" else 1
+            for i in range(copies):
+                win32api.ShellExecute(0, "print", self.file_path, None, ".", 0)
+        except Exception as e:
+            messagebox.showerror("Printing Error", f"Failed to print document: {e}")
+
+    def reset_machine(self):
+        if self.file_path and os.path.exists(self.file_path):
+            try:
+                os.remove(self.file_path)
+                print(f"Deleted file: {self.file_path}")
+            except Exception as e:
+                print(f"Error deleting file: {e}")
+        else:
+            print("No file found to delete.")
+        self.current_slide = 1
+        self.file_path = None
+        self.size_var.set("")
+        self.color_var.set("")
+        self.print_option_var.set("")
+        self.copies_var.set("1")
+        self.arduino_balance = 0.0
+        if self.ser:
+            try:
+                self.ser.reset_input_buffer()
+            except Exception as e:
+                print("Error resetting serial input buffer:", e)
+        self.draw_slide()
+
+    def on_color_change(self, *args):
+        if self.color_var.get() == "black_and_white" and self.file_path and self.file_path.lower().endswith(".pdf"):
+            self.file_path = self.convert_pdf_to_grayscale(self.file_path)
+
+    def convert_pdf_to_grayscale(self, input_pdf):
+        gray_file = os.path.splitext(input_pdf)[0] + "_grayscale.pdf"
+        gs_command = [
+            "C:/INSTAPRINT MACHINE/gs10.04.0/bin/gswin64c.exe",
+            "-sDEVICE=pdfwrite",
+            "-dCompatibilityLevel=1.4",
+            "-dPDFSETTINGS=/prepress",
+            "-dColorConversionStrategy=/Gray",
+            "-dProcessColorModel=/DeviceGray",
+            "-dNOPAUSE",
+            "-dBATCH",
+            f"-sOutputFile={gray_file}",
+            input_pdf
+        ]
+        try:
+            subprocess.run(gs_command, check=True)
+            print(f"Converted {input_pdf} to grayscale successfully as {gray_file}.")
+            return gray_file
+        except subprocess.CalledProcessError as e:
+            print("Error converting PDF to grayscale:", e)
+            return input_pdf
+
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = GradientApp(root)
+    root.mainloop()
+
+# We worked hard for this machine!! LEZ GO 12-STEM 4-B GRAHGRAHH!!!
