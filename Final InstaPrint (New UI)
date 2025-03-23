@@ -1,0 +1,544 @@
+import tkinter as tk
+from tkinter import filedialog, messagebox, Canvas, Button, PhotoImage, ttk
+from pathlib import Path
+import os
+import subprocess
+from PyPDF2 import PdfReader
+import win32api
+import win32print
+import win32con
+import serial
+import time
+
+# ----- Helper for asset paths -----
+OUTPUT_PATH = Path(__file__).parent
+ASSETS_PATH = Path(r"D:\VS CODE\PRACTICE FILE\build\assets")
+
+def relative_to_assets(frame: str, path: str) -> str:
+    """
+    Returns the full path (as string) for the given asset in the specified frame folder.
+    """
+    return str(ASSETS_PATH / frame / Path(path))
+
+# ----- Original Backend Function: Set Printer Color -----
+def set_printer_color(printer_name, color_choice):
+    hPrinter = None
+    try:
+        hPrinter = win32print.OpenPrinter(printer_name)
+        properties = win32print.GetPrinter(hPrinter, 2)
+        devmode = properties["pDevMode"]
+        if hasattr(devmode, "dmFields"):
+            devmode.dmFields |= win32con.DM_COLOR
+        else:
+            print("dmFields attribute not found; proceeding without updating dmFields.")
+        if color_choice == "black_and_white":
+            devmode.dmColor = 1  # Black and White
+        else:
+            devmode.dmColor = 2  # Colored
+        win32print.DocumentProperties(
+            None, hPrinter, printer_name, devmode, devmode,
+            win32print.DM_IN_BUFFER | win32print.DM_OUT_BUFFER
+        )
+    except Exception as e:
+        print("Error setting printer color:", e)
+    finally:
+        if hPrinter:
+            win32print.ClosePrinter(hPrinter)
+
+# ----- Utility: Draw Shadowed Text -----
+def create_shadowed_text(canvas, x, y, text, font, text_color, shadow_color, offset=(2,2)):
+    canvas.create_text(x + offset[0], y + offset[1], text=text, font=font, fill=shadow_color)
+    canvas.create_text(x, y, text=text, font=font, fill=text_color)
+
+# ----- Main Application Class -----
+class InstaPrintApp:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("InstaPrint Machine")
+        self.root.geometry("1920x1080")
+        self.root.configure(bg="#FFFFFF")
+        self.root.attributes('-fullscreen', True)
+        self.root.resizable(False, False)
+
+        # Slide control variable:
+        # 0 = Frame 0 (Introduction)
+        # 1 = Frame 1 (File Sending)
+        # 2 = Frame 2 (File Confirmation)
+        # 3 = Frame 3 (Paper Selection)
+        # 4 = Frame 4 (Summary Table)
+        # 5 = Frame 5 (Goodbye Screen)
+        self.current_slide = 0
+
+        # Shared variables for file selection and printing settings
+        self.file_path = None
+        self.selected_size = None
+        self.selected_color = None
+        self.selected_copies = None
+        self.paper_size_cost = 0
+        self.paper_color_cost = 0
+        self.image_refs = []  # To hold image references
+
+        # Persistent spinbox for "Multiple Copies" (hidden initially)
+        self.copies_spinbox = tk.Spinbox(self.root, from_=1, to=100, font=("Tahoma", 20))
+        self.copies_spinbox.place_forget()
+
+        # Arduino (Coin Slot) variables and serial connection
+        self.arduino_balance = 0.0
+        self.ser = None
+        self.init_serial_connection()
+        self.read_serial()  # Start polling serial data
+
+        # Create main canvas for UI
+        self.canvas = Canvas(root, bg="#FFFFFF", height=1080, width=1920,
+                             bd=0, highlightthickness=0, relief="ridge")
+        self.canvas.pack(fill=tk.BOTH, expand=True)
+
+        # Load logo (if available)
+        self.logo_path = "INSTAPRINT MAIN LOGO.png"
+        try:
+            self.logo_tk = self.create_logo(self.logo_path, size=700)
+        except Exception as e:
+            print(f"Error loading logo: {e}")
+            self.logo_tk = None
+
+        # Draw the current slide
+        self.draw_slide()
+
+        # Bind Escape key to exit fullscreen/close the window
+        self.root.bind("<Escape>", lambda e: self.root.destroy())
+
+    # ----- Arduino Serial Connection -----
+    def init_serial_connection(self):
+        try:
+            self.ser = serial.Serial('COM3', 9600, timeout=1)
+            time.sleep(2)
+            print("Serial connection established at 9600 baud.")
+        except Exception as e:
+            messagebox.showerror("Serial Error", f"Failed to open serial port: {e}")
+            self.ser = None
+
+    def read_serial(self):
+        if self.ser is not None:
+            try:
+                if self.ser.in_waiting:
+                    line = self.ser.readline().decode('utf-8', errors='ignore').strip()
+                    print("Serial read:", line)
+                    if line.startswith("Total Balance:"):
+                        parts = line.split()
+                        if len(parts) >= 3:
+                            try:
+                                self.arduino_balance = float(parts[2])
+                                self.update_payment()
+                            except ValueError:
+                                print("Error parsing coin amount")
+            except Exception as e:
+                print("Serial read error:", e)
+        self.root.after(500, self.read_serial)
+
+    def update_payment(self):
+        total_cost = self.calculate_cost()
+        print(f"Calculated Total Cost: ₱{total_cost:.2f} (Pages: {self.get_page_count()}, Size Cost: {self.paper_size_cost}, Color Cost: {self.paper_color_cost}, Arduino Balance: ₱{self.arduino_balance:.2f})")
+        if self.current_slide == 4:
+            self.draw_slide()
+
+    # ----- Ghostscript PDF Grayscale Conversion -----
+    def convert_pdf_to_grayscale(self, input_pdf):
+        gray_file = os.path.splitext(input_pdf)[0] + "_grayscale.pdf"
+        gs_command = [
+            "D:/INSTAPRINTMACHINE/gs10.04.0/bin/gswin64c.exe",
+            "-sDEVICE=pdfwrite",
+            "-dCompatibilityLevel=1.4",
+            "-dPDFSETTINGS=/prepress",
+            "-dColorConversionStrategy=/Gray",
+            "-dProcessColorModel=/DeviceGray",
+            "-dNOPAUSE",
+            "-dBATCH",
+            f"-sOutputFile={gray_file}",
+            input_pdf
+        ]
+        try:
+            subprocess.run(gs_command, check=True)
+            print(f"Converted {input_pdf} to grayscale successfully as {gray_file}.")
+            return gray_file
+        except subprocess.CalledProcessError as e:
+            print("Error converting PDF to grayscale:", e)
+            return input_pdf
+
+    # ----- Paper Color Selection (with conversion for black and white) -----
+    def select_paper_color(self, color, cost):
+        self.selected_color = color.lower().replace(" ", "_")
+        self.paper_color_cost = cost
+        print(f"Selected Paper Color: {color} - Cost: {cost} peso(s)")
+        if self.selected_color == "black_and_white" and self.file_path and self.file_path.lower().endswith(".pdf"):
+            self.file_path = self.convert_pdf_to_grayscale(self.file_path)
+
+    # ----- Helper Function: Create Logo -----
+    def create_logo(self, image_path, size=400):
+        from PIL import Image
+        img = Image.open(image_path).convert("RGBA").resize((size, size))
+        return ImageTk.PhotoImage(img)
+
+    # ----- Helper Functions for Cost Calculation -----
+    def get_page_count(self):
+        if self.file_path and self.file_path.lower().endswith(".pdf"):
+            try:
+                with open(self.file_path, "rb") as f:
+                    reader = PdfReader(f)
+                    return len(reader.pages)
+            except Exception as e:
+                print("PDF error:", e)
+                return 1
+        return 1
+
+    def calculate_cost(self):
+        page_count = self.get_page_count()
+        if self.selected_copies == "Multiple Copies":
+            try:
+                copies = int(self.copies_spinbox.get())
+            except Exception as e:
+                print("Error getting spinbox value:", e)
+                copies = 1
+        elif self.selected_copies == "One Copy":
+            copies = 1
+        else:
+            copies = 1
+        total = (self.paper_size_cost + self.paper_color_cost) * page_count * copies
+        return total
+
+    # ----- Drawing Slides -----
+    def draw_slide(self, event=None):
+        self.canvas.delete("all")
+        self.image_refs = []  # Reset image references
+
+        if self.current_slide == 0:
+            self.display_intro_slide()
+        elif self.current_slide == 1:
+            self.display_file_sending_slide()
+        elif self.current_slide == 2:
+            self.display_file_confirmation_slide()
+        elif self.current_slide == 3:
+            self.display_paper_selection_slide()
+        elif self.current_slide == 4:
+            self.display_summary_table()
+        elif self.current_slide == 5:
+            self.display_goodbye_screen()
+
+        self.canvas.update_idletasks()
+
+    def next_slide(self):
+        if self.current_slide == 1 and self.file_path is None:
+            messagebox.showwarning("No File Selected", "Please select a file before continuing.")
+            return
+        if self.current_slide == 3:
+            if not self.selected_size or not self.selected_color or not self.selected_copies:
+                messagebox.showwarning("Incomplete Selection", "Please select paper size, color, and copies before continuing.")
+                return
+            # Remove spinbox if it exists so it doesn't persist after proceeding
+            self.copies_spinbox.place_forget()
+        self.current_slide += 1
+        self.draw_slide()
+
+    def previous_slide(self):
+        if self.current_slide > 0:
+            self.current_slide -= 1
+            self.draw_slide()
+
+    def restart_application(self):
+        self.file_path = None
+        self.selected_size = None
+        self.selected_color = None
+        self.selected_copies = None
+        self.paper_size_cost = 0
+        self.paper_color_cost = 0
+        self.copies_spinbox.place_forget()
+        self.current_slide = 0
+        self.draw_slide()
+
+    # ------------------ Frame 0: Introduction Slide ------------------
+    def display_intro_slide(self):
+        self.canvas.configure(bg="#FFFFFF")
+        for img_name in ["frame0_image_1.png", "frame0_image_2.png"]:
+            try:
+                img = PhotoImage(file=relative_to_assets("frame0", img_name))
+                self.canvas.create_image(960, 540, image=img)
+                self.image_refs.append(img)
+            except Exception as e:
+                print(f"Error loading {img_name}: {e}")
+        try:
+            btn_img = PhotoImage(file=relative_to_assets("frame0", "frame0_button_1.png"))
+            continue_btn = Button(self.root, image=btn_img, borderwidth=0, highlightthickness=0,
+                                  command=self.next_slide, relief="flat")
+            self.canvas.create_window(960, 892, window=continue_btn, width=327, height=82)
+            self.image_refs.append(btn_img)
+        except Exception as e:
+            print(f"Error loading frame0_button_1: {e}")
+
+    # ------------------ Frame 1: File Sending Slide ------------------
+    def display_file_sending_slide(self):
+        self.canvas.configure(bg="#FFFFFF")
+        images = [
+            ("frame1_image_1.png", (960, 540)), ("frame1_image_2.png", (960, 509)),
+            ("frame1_image_3.png", (960, 144)), ("frame1_image_4.png", (943, 144)),
+            ("frame1_image_5.png", (1366, 449)), ("frame1_image_6.png", (589, 449)),
+            ("frame1_image_7.png", (128, 951)), ("frame1_image_8.png", (1058, 287))
+        ]
+        for img_name, pos in images:
+            try:
+                img = PhotoImage(file=relative_to_assets("frame1", img_name))
+                self.canvas.create_image(*pos, image=img)
+                self.image_refs.append(img)
+            except Exception as e:
+                print(f"Error loading {img_name}: {e}")
+        buttons = [
+            ("frame1_button_1.png", (456, 651), self.handle_usb_transfer),
+            ("frame1_button_2.png", (454, 532), self.handle_bluetooth),
+            ("frame1_button_3.png", (795, 770), self.next_slide),
+            ("frame1_button_4.png", (1220, 562), self.select_file)
+        ]
+        for img_name, pos, command in buttons:
+            try:
+                btn_img = PhotoImage(file=relative_to_assets("frame1", img_name))
+                btn = Button(self.root, image=btn_img, borderwidth=0, highlightthickness=0,
+                             command=command, relief="flat")
+                self.canvas.create_window(*pos, window=btn)
+                self.image_refs.append(btn_img)
+            except Exception as e:
+                print(f"Error loading {img_name}: {e}")
+
+    # ------------------ Frame 2: File Confirmation Slide ------------------
+    def display_file_confirmation_slide(self):
+        self.canvas.configure(bg="#FFFFFF")
+        images = [
+            ("frame2_image_1.png", (960, 540)),
+            ("frame2_image_2.png", (128, 989)),
+            ("frame2_image_3.png", (985, 593)),
+            ("frame2_image_4.png", (983, 200)),
+            ("frame2_image_5.png", (1008, 200))
+        ]
+        for img_name, pos in images:
+            try:
+                img = PhotoImage(file=relative_to_assets("frame2", img_name))
+                self.canvas.create_image(*pos, image=img)
+                self.image_refs.append(img)
+            except Exception as e:
+                print(f"Error loading {img_name}: {e}")
+        file_name = os.path.basename(self.file_path) if self.file_path else "No file selected"
+        self.canvas.create_text(960, 500, text=f"Selected File: {file_name}",
+                                font=("Tahoma", 30, "bold"), fill="black")
+        buttons = [
+            ("frame2_button_1.png", (1004, 830), self.next_slide),
+            ("frame2_button_2.png", (642, 830), self.previous_slide)
+        ]
+        for img_name, pos, command in buttons:
+            try:
+                btn_img = PhotoImage(file=relative_to_assets("frame2", img_name))
+                btn = Button(self.root, image=btn_img, borderwidth=0, highlightthickness=0,
+                             command=command, relief="flat")
+                self.canvas.create_window(*pos, window=btn)
+                self.image_refs.append(btn_img)
+            except Exception as e:
+                print(f"Error loading {img_name}: {e}")
+
+    # ------------------ Frame 3: Paper Selection Slide ------------------
+    def display_paper_selection_slide(self):
+        self.canvas.configure(bg="#FFFFFF")
+        images = [
+            ("frame3_image_1.png", (960, 540)), ("frame3_image_2.png", (960, 515)),
+            ("frame3_image_3.png", (136, 958)), ("frame3_image_4.png", (1341, 339)),
+            ("frame3_image_5.png", (957, 701)), ("frame3_image_6.png", (547, 339)),
+            ("frame3_image_7.png", (958, 166)), ("frame3_image_8.png", (960, 164)),
+            ("frame3_image_9.png", (951, 703)), ("frame3_image_10.png", (544, 334)),
+            ("frame3_image_11.png", (1348, 335))
+        ]
+        for img_name, pos in images:
+            try:
+                img = PhotoImage(file=relative_to_assets("frame3", img_name))
+                self.canvas.create_image(*pos, image=img)
+                self.image_refs.append(img)
+            except Exception as e:
+                print(f"Error loading {img_name}: {e}")
+        buttons = [
+            ("frame3_button_1.png", (1167, 398), lambda: self.select_paper_size("Short", 1)),
+            ("frame3_button_2.png", (370, 399), lambda: self.select_paper_color("Black & White", 2)),
+            ("frame3_button_3.png", (376, 536), lambda: self.select_paper_color("Colored", 3)),
+            ("frame3_button_4.png", (575, 756), lambda: self.select_copies("One Copy")),
+            ("frame3_button_5.png", (976, 754), lambda: self.select_copies("Multiple Copies")),
+            ("frame3_button_6.png", (1166, 540), lambda: self.select_paper_size("Long", 2)),
+            ("frame3_button_7.png", (1517, 798), self.next_slide),
+            ("frame3_button_8.png", (257, 799), self.previous_slide)
+        ]
+        for img_name, pos, command in buttons:
+            try:
+                btn_img = PhotoImage(file=relative_to_assets("frame3", img_name))
+                btn = Button(self.root, image=btn_img, borderwidth=0, highlightthickness=0,
+                             command=command, relief="flat")
+                self.canvas.create_window(*pos, window=btn)
+                self.image_refs.append(btn_img)
+            except Exception as e:
+                print(f"Error loading {img_name}: {e}")
+        # Show spinbox if "Multiple Copies" is selected
+        if self.selected_copies == "Multiple Copies":
+            try:
+                self.copies_spinbox.place(x=960, y=820, width=100, height=50)
+                self.copies_spinbox.lift()
+                self.root.update_idletasks()
+                self.root.update()
+            except Exception as e:
+                print(f"Error placing spinbox: {e}")
+        else:
+            self.copies_spinbox.place_forget()
+
+    # ------------------ Frame 4: Summary Table ------------------
+    def display_summary_table(self):
+        self.canvas.configure(bg="#FFFFFF")
+        total_cost = self.calculate_cost()
+        net_cost = total_cost - self.arduino_balance
+
+        try:
+            img = PhotoImage(file=relative_to_assets("frame4", "frame4_image_1.png"))
+            self.canvas.create_image(960, 540, image=img)
+            self.image_refs.append(img)
+        except Exception as e:
+            print(f"Error loading frame4_image_1: {e}")
+
+        # Table for Summary
+        summary_table = ttk.Treeview(self.root, columns=("SETTINGS", "DETAILS"), show="headings", height=5)
+        summary_table.heading("SETTINGS", text="SETTINGS", anchor=tk.CENTER)
+        summary_table.heading("DETAILS", text="DETAILS", anchor=tk.CENTER)
+        summary_table.column("SETTINGS", width=400, anchor=tk.CENTER)
+        summary_table.column("DETAILS", width=400, anchor=tk.CENTER)
+
+        style = ttk.Style()
+        style.theme_use('clam')
+        style.configure("Treeview", font=("Tahoma", 20), rowheight=65, background="#0d084d", foreground="white")
+        style.configure("Treeview.Heading", font=("Tahoma", 25, "bold"), background="#0099ff", foreground="white")
+        style.map("Treeview", background=[("selected", "#0d084d")])
+
+        summary_table.insert("", "end", values=("FILE", os.path.basename(self.file_path) if self.file_path else "No file selected"))
+        summary_table.insert("", "end", values=("SIZE", self.selected_size if self.selected_size else "Not selected"))
+        summary_table.insert("", "end", values=("COLOR", self.selected_color if self.selected_color else "Not selected"))
+        if self.selected_copies == "Multiple Copies":
+            try:
+                copies_value = int(self.copies_spinbox.get())
+            except:
+                copies_value = "Not selected"
+        elif self.selected_copies == "One Copy":
+            copies_value = 1
+        else:
+            copies_value = self.selected_copies if self.selected_copies else "Not selected"
+        summary_table.insert("", "end", values=("NUMBER OF COPIES", copies_value))
+        summary_table.insert("", "end", values=("TOTAL PAGES", self.get_page_count() * (copies_value if isinstance(copies_value, int) else 1)))
+        self.canvas.create_window(960, 400, window=summary_table)
+
+        amount_table = ttk.Treeview(self.root, columns=("Amount",), show="headings", height=1)
+        amount_table.heading("Amount", text="AMOUNT TO BE PAID", anchor=tk.CENTER)
+        amount_table.column("Amount", width=800, anchor=tk.CENTER)
+        amount_table.insert("", "end", values=(f"₱{net_cost:.2f}",))
+        self.canvas.create_window(960, 600, window=amount_table)
+
+        # Back button always available
+        try:
+            btn_img = PhotoImage(file=relative_to_assets("frame4", "frame4_button_1.png"))
+            back_btn = Button(self.root, image=btn_img, borderwidth=0, highlightthickness=0,
+                              command=self.previous_slide, relief="flat")
+            self.canvas.create_window(539, 862, window=back_btn, width=322, height=111)
+            self.image_refs.append(btn_img)
+        except Exception as e:
+            print(f"Error loading frame4_button_1: {e}")
+        # Continue button only if net_cost <= 0 (fully paid)
+        if net_cost <= 0:
+            try:
+                btn_img = PhotoImage(file=relative_to_assets("frame4", "frame4_button_2.png"))
+                continue_btn = Button(self.root, image=btn_img, borderwidth=0, highlightthickness=0,
+                                      command=self.next_slide, relief="flat")
+                self.canvas.create_window(1002, 861, window=continue_btn, width=323, height=114)
+                self.image_refs.append(btn_img)
+            except Exception as e:
+                print(f"Error loading frame4_button_2: {e}")
+        else:
+            self.canvas.create_text(960, 300, text=f"Insufficient Payment. Please insert ₱{net_cost:.2f} more.",
+                                     font=("Tahoma", 30, "bold"), fill="red")
+
+    # ------------------ Frame 5: Goodbye Screen ------------------
+    def display_goodbye_screen(self):
+        self.canvas.configure(bg="#FFFFFF")
+        try:
+            img = PhotoImage(file=relative_to_assets("frame5", "frame5_image_1.png"))
+            self.canvas.create_image(960, 540, image=img)
+            self.image_refs.append(img)
+        except Exception as e:
+            print(f"Error loading frame5_image_1: {e}")
+        images = [
+            ("frame5_image_2.png", (959, 423)),
+            ("frame5_image_3.png", (960, 702)),
+            ("frame5_image_4.png", (959, 787))
+        ]
+        for img_name, pos in images:
+            try:
+                img = PhotoImage(file=relative_to_assets("frame5", img_name))
+                self.canvas.create_image(*pos, image=img)
+                self.image_refs.append(img)
+            except Exception as e:
+                print(f"Error loading {img_name}: {e}")
+        try:
+            btn_img = PhotoImage(file=relative_to_assets("frame5", "frame5_button_1.png"))
+            restart_btn = Button(self.root, image=btn_img, borderwidth=0, highlightthickness=0,
+                                 command=self.restart_application, relief="flat")
+            self.canvas.create_window(798, 870, window=restart_btn, width=324, height=117)
+            self.image_refs.append(btn_img)
+        except Exception as e:
+            print(f"Error loading frame5_button_1: {e}")
+
+    # ------------------ File Selection Function ------------------
+    def select_file(self):
+        file_path = filedialog.askopenfilename(title="Select a file",
+                                               filetypes=[("PDF Files", "*.pdf"),
+                                                          ("Word Documents", "*.doc;*.docx")])
+        if file_path:
+            print(f"File selected: {file_path}")
+            self.file_path = file_path
+            messagebox.showinfo("File Selected", f"You selected: {os.path.basename(file_path)}")
+            self.next_slide()
+
+    # ------------------ USB Transfer Function ------------------
+    def handle_usb_transfer(self):
+        messagebox.showinfo("USB Transfer", "Please insert a USB")
+        # Additional USB transfer code can be added here
+
+    # ------------------ Bluetooth Transfer Function ------------------
+    def handle_bluetooth(self):
+        try:
+            subprocess.Popen(["C:\\INSTAPRINT MACHINE\\receive.bat"], shell=True)
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to run receive.bat: {str(e)}")
+
+    # ------------------ Paper Setting Selection Functions ------------------
+    def select_paper_size(self, size, cost):
+        self.selected_size = size
+        self.paper_size_cost = cost
+        print(f"Selected Paper Size: {size} - Cost: {cost} peso(s)")
+
+    def select_paper_color(self, color, cost):
+        self.selected_color = color.lower().replace(" ", "_")
+        self.paper_color_cost = cost
+        print(f"Selected Paper Color: {color} - Cost: {cost} peso(s)")
+        if self.selected_color == "black_and_white" and self.file_path and self.file_path.lower().endswith(".pdf"):
+            self.file_path = self.convert_pdf_to_grayscale(self.file_path)
+
+    def select_copies(self, copies):
+        self.selected_copies = copies
+        print(f"Selected Copies: {copies}")
+        if copies == "Multiple Copies":
+            self.copies_spinbox.place(x=960, y=820, width=100, height=50)
+            self.copies_spinbox.lift()
+            self.root.update_idletasks()
+            self.root.update()
+        else:
+            self.copies_spinbox.place_forget()
+
+    # ------------------ Start Application ------------------
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = InstaPrintApp(root)
+    root.mainloop()
+
