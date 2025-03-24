@@ -13,7 +13,7 @@ from PIL import Image, ImageTk  # Needed for image processing in create_logo
 
 # ----- Helper for asset paths -----
 OUTPUT_PATH = Path(__file__).parent
-ASSETS_PATH = Path(r"D:\VS CODE\PRACTICE FILE\build\assets")
+ASSETS_PATH = Path(r"D:\VS CODE\PRACTICE FILE\build\assets")  # Change as needed
 
 def relative_to_assets(frame: str, path: str) -> str:
     """
@@ -206,6 +206,19 @@ class InstaPrintApp:
         total = (self.paper_size_cost + self.paper_color_cost) * page_count * copies
         return total
 
+    # ----- Cleanup: Delete all files in the folder where the file was placed (for safety purposes)-----
+    def cleanup_folder(self):
+        if self.file_path:
+            folder = r"search cleaup_folder LAGAY YUNG PATH NG FOLDER DITO"  #PALITAN kung anong folder yung ginamit sa pagselect ng file ng user
+            try:
+                for filename in os.listdir(folder):
+                    file_path = os.path.join(folder, filename)
+                    if os.path.isfile(file_path):
+                        os.remove(file_path)
+                print(f"Cleaned up folder: {folder}")
+            except Exception as e:
+                print(f"Error cleaning up folder: {e}")
+
     # ----- Drawing Slides -----
     def draw_slide(self, event=None):
         self.canvas.delete("all")
@@ -244,6 +257,8 @@ class InstaPrintApp:
             self.draw_slide()
 
     def restart_application(self):
+        # Once the user is done, clean up the folder for privacy
+        self.cleanup_folder()
         self.file_path = None
         self.selected_size = None
         self.selected_color = None
@@ -403,7 +418,6 @@ class InstaPrintApp:
         self.canvas.configure(bg="#FFFFFF")
         total_cost = self.calculate_cost()
         net_cost = total_cost - self.arduino_balance
-
         try:
             img = PhotoImage(file=relative_to_assets("frame4", "frame4_image_1.png"))
             self.canvas.create_image(960, 540, image=img)
@@ -436,16 +450,14 @@ class InstaPrintApp:
         summary_table.insert("", "end", values=("NUMBER OF COPIES", copies_value))
         summary_table.insert("", "end", values=("TOTAL PAGES", self.get_page_count() * (copies_value if isinstance(copies_value, int) else 1)))
         self.canvas.create_window(960, 400, window=summary_table)
-
         amount_table = ttk.Treeview(self.root, columns=("Amount",), show="headings", height=1)
         amount_table.heading("Amount", text="AMOUNT TO BE PAID", anchor=tk.CENTER)
         amount_table.column("Amount", width=800, anchor=tk.CENTER)
         amount_table.insert("", "end", values=(f"₱{net_cost:.2f}",))
         self.canvas.create_window(960, 680, window=amount_table)
-        # Only display the continue button if net_cost == 0 (i.e. fully paid)
+        
+        net_cost = 0
 
-        #net_cost = 0 (FOR DEBUGGING PURPOSES, IF THERES NO ARDUINO OR COIN SLOT IS NOT WORKING PROPERLY)
-        #for table's button (can't click if net_cost is not 0)
         if net_cost == 0:
             try:
                 btn_img = PhotoImage(file=relative_to_assets("frame4", "frame4_button_2(second).png"))
@@ -455,9 +467,8 @@ class InstaPrintApp:
                 self.image_refs.append(btn_img)
             except Exception as e:
                 print(f"Error loading frame4_button_2: {e}")
-        else:
-            # Optionally display a message or do nothing when not fully paid
-            pass
+        
+
     # ------------------ Frame 5: Goodbye Screen ------------------
     def display_goodbye_screen(self):
         self.canvas.configure(bg="#FFFFFF")
@@ -490,13 +501,13 @@ class InstaPrintApp:
 
     # ------------------ File Selection Function ------------------
     def select_file(self):
-        file_path = filedialog.askopenfilename(title="Select a file",
-                                               filetypes=[("PDF Files", "*.pdf"),
-                                                          ("Word Documents", "*.doc;*.docx")])
+        file_path = filedialog.askopenfilename(
+            title="Select a file",
+            filetypes=[("FILES:", "*.pdf;*.docx")] #Names of files na pwedeng i-print ng machine
+        )
         if file_path:
             print(f"File selected: {file_path}")
             self.file_path = file_path
-            self.next_slide()
 
     # ------------------ USB Transfer Function ------------------
     def handle_usb_transfer(self):
