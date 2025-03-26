@@ -455,8 +455,8 @@ class InstaPrintApp:
         amount_table.column("Amount", width=800, anchor=tk.CENTER)
         amount_table.insert("", "end", values=(f"₱{net_cost:.2f}",))
         self.canvas.create_window(960, 680, window=amount_table)
-        
-        net_cost = 0
+
+        net_cost = 0 #DEBUGGING PURPOSES
 
         if net_cost == 0:
             try:
