@@ -9,7 +9,7 @@ import win32print
 import win32con
 import serial
 import time
-from PIL import Image, ImageTk  # Needed for image processing in create_logo
+from PIL import Image, ImageTk
 
 # ----- Helper for asset paths -----
 OUTPUT_PATH = Path(__file__).parent
@@ -36,11 +36,8 @@ def set_printer_color(printer_name, color_choice):
             devmode.dmColor = 1  # Black and White
         else:
             devmode.dmColor = 2  # Colored
-
-        win32print.DocumentProperties(
-            None, hPrinter, printer_name, devmode, devmode,
-            win32print.DM_IN_BUFFER | win32print.DM_OUT_BUFFER
-        )
+        win32print.DocumentProperties(None, hPrinter, printer_name, devmode, devmode,
+                                      win32print.DM_IN_BUFFER | win32print.DM_OUT_BUFFER)
     except Exception as e:
         print("Error setting printer color:", e)
     finally:
@@ -206,10 +203,10 @@ class InstaPrintApp:
         total = (self.paper_size_cost + self.paper_color_cost) * page_count * copies
         return total
 
-    # ----- Cleanup: Delete all files in the folder where the file was placed (for safety purposes)-----
+    # ----- Cleanup: Delete all files in the folder where the file was placed (for safety purposes) -----
     def cleanup_folder(self):
         if self.file_path:
-            folder = r"search cleaup_folder LAGAY YUNG PATH NG FOLDER DITO"  #PALITAN kung anong folder yung ginamit sa pagselect ng file ng user
+            folder = r"C:\InstaprintUploads"  # Replace with the folder used for file selection
             try:
                 for filename in os.listdir(folder):
                     file_path = os.path.join(folder, filename)
@@ -348,8 +345,7 @@ class InstaPrintApp:
             except Exception as e:
                 print(f"Error loading {img_name}: {e}")
         file_name = os.path.basename(self.file_path) if self.file_path else "No file selected"
-        self.canvas.create_text(960, 500, text=f"{file_name}",
-                                font=("Tahoma", 40, "bold"), fill="black")
+        self.canvas.create_text(960, 500, text=f"{file_name}", font=("Tahoma", 40, "bold"), fill="black")
         buttons = [
             ("frame2_button_1.png", (1220, 800), self.next_slide),
             ("frame2_button_2.png", (750, 800), self.previous_slide)
@@ -450,14 +446,14 @@ class InstaPrintApp:
         summary_table.insert("", "end", values=("NUMBER OF COPIES", copies_value))
         summary_table.insert("", "end", values=("TOTAL PAGES", self.get_page_count() * (copies_value if isinstance(copies_value, int) else 1)))
         self.canvas.create_window(960, 400, window=summary_table)
+
         amount_table = ttk.Treeview(self.root, columns=("Amount",), show="headings", height=1)
         amount_table.heading("Amount", text="AMOUNT TO BE PAID", anchor=tk.CENTER)
         amount_table.column("Amount", width=800, anchor=tk.CENTER)
         amount_table.insert("", "end", values=(f"₱{net_cost:.2f}",))
         self.canvas.create_window(960, 680, window=amount_table)
 
-        net_cost = 0 #DEBUGGING PURPOSES
-
+        # Debug: if net_cost is 0, show a continue button
         if net_cost == 0:
             try:
                 btn_img = PhotoImage(file=relative_to_assets("frame4", "frame4_button_2(second).png"))
@@ -467,7 +463,6 @@ class InstaPrintApp:
                 self.image_refs.append(btn_img)
             except Exception as e:
                 print(f"Error loading frame4_button_2: {e}")
-        
 
     # ------------------ Frame 5: Goodbye Screen ------------------
     def display_goodbye_screen(self):
@@ -499,15 +494,68 @@ class InstaPrintApp:
         except Exception as e:
             print(f"Error loading frame5_button_1: {e}")
 
-    # ------------------ File Selection Function ------------------
+    # ------------------ File Selection Function: Custom File Manager ------------------
     def select_file(self):
-        file_path = filedialog.askopenfilename(
-            title="Select a file",
-            filetypes=[("FILES:", "*.pdf;*.docx")] #Names of files na pwedeng i-print ng machine
-        )
-        if file_path:
-            print(f"File selected: {file_path}")
-            self.file_path = file_path
+        # Define the dedicated folder for file selection
+        custom_folder = r"C:\INSTAPRINTMACHINE"  # Change this to your designated folder
+
+        # Create a new Toplevel window for the custom file manager
+        top = tk.Toplevel(self.root)
+        top.title("Confirm")
+        top.geometry("600x400")
+        top.resizable(False, False)
+        # Center the window on screen
+        top.update_idletasks()
+        width = top.winfo_width()
+        height = top.winfo_height()
+        x = (top.winfo_screenwidth() // 2) - (width // 2)
+        y = (top.winfo_screenheight() // 2) - (height // 2)
+        top.geometry(f"600x400+{x}+{y}")
+
+        # Create a frame for the listbox and scrollbar
+        frame = tk.Frame(top)
+        frame.pack(fill="both", expand=True, padx=10, pady=10)
+
+        scrollbar = tk.Scrollbar(frame)
+        scrollbar.pack(side="right", fill="y")
+
+        listbox = tk.Listbox(frame, font=("Tahoma", 16), yscrollcommand=scrollbar.set)
+        listbox.pack(side="left", fill="both", expand=True)
+        scrollbar.config(command=listbox.yview)
+
+        # Only list files with allowed extensions (.pdf, .docx, .doc)
+        try:
+            allowed_exts = ('.pdf', '.docx', '.doc')
+            files = [f for f in os.listdir(custom_folder)
+                     if os.path.isfile(os.path.join(custom_folder, f)) and f.lower().endswith(allowed_exts)]
+            print("Files found:", files)
+            if not files:
+                messagebox.showinfo("No Files", "There are no allowed files in the designated folder.")
+                top.destroy()
+                return
+            for f in files:
+                listbox.insert(tk.END, f)
+        except Exception as e:
+            messagebox.showerror("Error", f"Could not access folder:\n{e}")
+            top.destroy()
+            return
+
+        def on_select():
+            selected = listbox.curselection()
+            if selected:
+                file_name = listbox.get(selected[0])
+                full_path = os.path.join(custom_folder, file_name)
+                self.file_path = full_path
+                print(f"File selected: {full_path}")
+                top.destroy()
+            else:
+                messagebox.showwarning("No Selection", "Please select a file.")
+
+        select_btn = tk.Button(top, text="Select File", font=("Tahoma", 16), command=on_select)
+        select_btn.pack(pady=10)
+
+        # Make the Toplevel window modal
+        top.grab_set()
 
     # ------------------ USB Transfer Function ------------------
     def handle_usb_transfer(self):
