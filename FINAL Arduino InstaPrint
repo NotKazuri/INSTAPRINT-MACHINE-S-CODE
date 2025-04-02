@@ -1,7 +1,8 @@
 const int COIN_PIN = 2;  
-const unsigned long DEBOUNCE_TIME = 50;    
-const unsigned long RESET_TIMEOUT = 300;  
-const unsigned long LOCKOUT_TIME = 500;    
+const unsigned long DEBOUNCE_TIME = 100;    
+const unsigned long RESET_TIMEOUT = 400;  
+const unsigned long LOCKOUT_TIME = 700;    
+
 
 volatile unsigned long lastPulseTime = 0;
 volatile int pulseCount = 0;
@@ -9,12 +10,14 @@ unsigned long lastResetTime = 0;
 bool locked = false;
 int totalCredits = 0;  
 
+
 void setup() {
   Serial.begin(9600);
   pinMode(COIN_PIN, INPUT_PULLUP);  
   attachInterrupt(digitalPinToInterrupt(COIN_PIN), handlePulse, FALLING);  
   Serial.println("Coin Acceptor Ready");
 }
+
 
 // Interrupt function to handle pulses with debounce
 void handlePulse() {
@@ -24,6 +27,7 @@ void handlePulse() {
     lastPulseTime = currentTime;
   }
 }
+
 
 // Function to determine the coin value based on pulse count
 int getCoinValue(int pulses) {
@@ -36,13 +40,15 @@ int getCoinValue(int pulses) {
   }
 }
 
+
+// Process the coin pulses and update the totalCredits
 void processCoin() {
-  // Use an atomic block to safely read and reset pulseCount
   int localPulseCount;
   noInterrupts();
   localPulseCount = pulseCount;
   pulseCount = 0;
   interrupts();
+
 
   if (localPulseCount > 0) {
     int coinValue = getCoinValue(localPulseCount);
@@ -59,23 +65,55 @@ void processCoin() {
       Serial.print(localPulseCount);
       Serial.println(" pulses");
     }
-    locked = true;
+    // Lock to avoid reprocessing until sensor is idle
+    locked = true;                
     lastResetTime = millis();
   }
 }
 
+
+// Reset the coin counter to clear total credits
+void resetCoinCounter() {
+  totalCredits = 0;
+  Serial.println("Coin counter reset");
+}
+
+
 void loop() {
   unsigned long currentTime = millis();
+
 
   // Process coin if there are pulses and no new pulse arrived within RESET_TIMEOUT
   if (!locked && pulseCount > 0 && (currentTime - lastPulseTime > RESET_TIMEOUT)) {
     processCoin();
   }
 
-  // Reset the lockout flag after LOCKOUT_TIME
+
+  // Unlock if the sensor is idle (not triggered)
+  if (locked && digitalRead(COIN_PIN) == HIGH) {
+    locked = false;
+  }
+
+
+  // Fallback: if locked too long, unlock (handles noisy sensor readings)
   if (locked && (currentTime - lastResetTime > LOCKOUT_TIME)) {
     locked = false;
   }
 
-  delay(50);  // Shorter delay for more responsive processing
+
+  // Check for a serial command to reset the coin counter.
+  // Use "RESET" or "COMPLETE" to indicate the end of a transaction.
+  if (Serial.available() > 0) {
+    String command = Serial.readStringUntil('\n');
+    command.trim();
+    if (command.equalsIgnoreCase("RESET") || command.equalsIgnoreCase("COMPLETE")) {
+      resetCoinCounter();
+    }
+  }
+
+
+  delay(200);  // Short delay for responsive processing
 }
+
+
+
