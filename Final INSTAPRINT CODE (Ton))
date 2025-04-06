@@ -10,16 +10,37 @@ import win32con
 import serial
 import time
 from PIL import Image, ImageTk
+import psutil
+import urllib.parse
+import win32com.client
+import threading
+import socket
+import pyqrcode
+from flask import Flask, request, render_template_string
 
 
-# Directory for the png.s
+# =============================================================================
+# ASSET & UTILITY FUNCTIONS
+# =============================================================================
+
+
+# Directory for the PNGs and other assets
 OUTPUT_PATH = Path(__file__).parent
-ASSETS_PATH = Path(r"C:\InstaPrint Machine\build\assets")  # Change as needed per laptop
+ASSETS_PATH = Path(r"C:\InstaPrint Machine\build\assets")  # Adjust as needed
+
 
 def relative_to_assets(frame: str, path: str) -> str:
     return str(ASSETS_PATH / frame / Path(path))
 
-# Sets the printer's colors
+
+def center_window(window, width, height):
+    screen_width = window.winfo_screenwidth()
+    screen_height = window.winfo_screenheight()
+    x = (screen_width // 2) - (width // 2)
+    y = (screen_height // 2) - (height // 2)
+    window.geometry(f"{width}x{height}+{x}+{y}")
+
+
 def set_printer_color(printer_name, color_choice):
     hPrinter = None
     try:
@@ -34,19 +55,187 @@ def set_printer_color(printer_name, color_choice):
             devmode.dmColor = 1  # Black and White
         else:
             devmode.dmColor = 2  # Colored
-        win32print.DocumentProperties(None, hPrinter, printer_name, devmode, devmode, win32print.DM_IN_BUFFER | win32print.DM_OUT_BUFFER)
+        win32print.DocumentProperties(None, hPrinter, printer_name,
+                                      devmode, devmode,
+                                      win32print.DM_IN_BUFFER | win32print.DM_OUT_BUFFER)
     except Exception as e:
         print("Error setting printer color:", e)
     finally:
         if hPrinter:
             win32print.ClosePrinter(hPrinter)
 
-# Class of InstaPrint 
+
+# =============================================================================
+# FLASK SERVER FOR WI‑FI FILE UPLOAD
+# =============================================================================
+
+
+# The Flask app runs in a separate thread to allow Wi‑Fi uploads.
+flask_app = Flask(__name__)
+
+
+# Folder to store uploaded files via Wi‑Fi (use the same folder as used by the machine)
+WIFI_UPLOAD_FOLDER = r"C:\INSTAPRINTMACHINE"
+os.makedirs(WIFI_UPLOAD_FOLDER, exist_ok=True)
+
+
+# Folder for storing static files (such as the QR code image)
+WIFI_STATIC_FOLDER = 'wifi_static'
+os.makedirs(WIFI_STATIC_FOLDER, exist_ok=True)
+
+
+def get_local_ip():
+    """Return the local network IP address of this machine."""
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(("10.255.255.255", 1))
+        ip = s.getsockname()[0]
+    except Exception:
+        ip = "127.0.0.1"
+    finally:
+        s.close()
+    return ip
+
+
+def get_scheme_and_ssl_context():
+    """Return the URL scheme and SSL context if certificate files exist."""
+    ssl_cert = 'cert.pem'
+    ssl_key = 'key.pem'
+    if os.path.exists(ssl_cert) and os.path.exists(ssl_key):
+        print("SSL certificate files found. Running in HTTPS mode.")
+        return "https", (ssl_cert, ssl_key)
+    else:
+        print("SSL certificate files not found. Running in HTTP mode.")
+        return "http", None
+
+
+SCHEME, SSL_CONTEXT = get_scheme_and_ssl_context()
+
+
+@flask_app.route('/')
+def wifi_index():
+    local_ip = get_local_ip()
+    upload_url = f"{SCHEME}://{local_ip}:5000/upload"
+    # Generate the QR code for the upload URL
+    qr = pyqrcode.create(upload_url)
+    qr_path = os.path.join(WIFI_STATIC_FOLDER, 'qr.png')
+    qr.png(qr_path, scale=8)
+    html = f'''
+    <!doctype html>
+    <html>
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>Send File via Wi-Fi</title>
+        <style>
+          body {{
+            background: linear-gradient(135deg, #1e3c72, #2a5298);
+            color: white;
+            font-family: Arial, sans-serif;
+            text-align: center;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            font-size: 18px;
+          }}
+          h1 {{
+            font-size: 2em;
+            margin-bottom: 20px;
+          }}
+          a {{
+            color: #ffffff;
+            text-decoration: underline;
+            font-size: 1.2em;
+          }}
+          img {{
+            max-width: 80%;
+            height: auto;
+          }}
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <h1>Send File via Wi-Fi</h1>
+          <p>Scan the QR code below on your mobile device to upload a file:</p>
+          <img src="/{qr_path}" alt="QR Code">
+          <p>Or click <a href="{upload_url}">{upload_url}</a></p>
+        </div>
+      </body>
+    </html>
+    '''
+    return render_template_string(html)
+
+
+@flask_app.route('/upload', methods=['GET', 'POST'])
+def wifi_upload():
+    if request.method == 'POST':
+        if 'file' not in request.files:
+            return 'No file part in the request.'
+        file = request.files['file']
+        if file.filename == '':
+            return 'No file selected.'
+        filepath = os.path.join(WIFI_UPLOAD_FOLDER, file.filename)
+        file.save(filepath)
+        return f'File "{file.filename}" uploaded successfully to "C:\\INSTAPRINTMACHINE"!'
+    return '''
+    <!doctype html>
+    <html>
+      <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>Upload File</title>
+        <style>
+          body {
+            background: linear-gradient(135deg, #1e3c72, #2a5298);
+            color: white;
+            font-family: Arial, sans-serif;
+            text-align: center;
+            padding-top: 50px;
+            font-size: 18px;
+          }
+          input[type="file"] {
+            margin: 20px 0;
+            font-size: 1em;
+          }
+          input[type="submit"] {
+            background-color: #ffffff;
+            color: #1e3c72;
+            border: none;
+            padding: 10px 20px;
+            font-size: 1.2em;
+            cursor: pointer;
+          }
+        </style>
+      </head>
+      <body>
+        <h1>Upload a File</h1>
+        <form method="post" enctype="multipart/form-data">
+          <input type="file" name="file"><br>
+          <input type="submit" value="Upload">
+        </form>
+      </body>
+    </html>
+    '''
+
+
+def run_flask_server():
+    flask_app.run(host='0.0.0.0', port=5000, debug=False, use_reloader=False,
+                  ssl_context=SSL_CONTEXT)
+
+
+# =============================================================================
+# INSTANT PRINT MACHINE APPLICATION
+# =============================================================================
+
+
 class InstaPrintApp:
     def __init__(self, root):
         self.root = root
         self.root.title("InstaPrint Machine")
-
         self.screen_width = self.root.winfo_screenwidth()
         self.screen_height = self.root.winfo_screenheight()
         self.root.geometry(f"{self.screen_width}x{self.screen_height}")
@@ -54,40 +243,41 @@ class InstaPrintApp:
         self.root.attributes('-fullscreen', True)
         self.root.resizable(False, False)
 
+
+        # Design dimensions and scaling
         design_width = 1920
         design_height = 1080
         self.scale_x = self.screen_width / design_width
         self.scale_y = self.screen_height / design_height
+        self.scale = lambda x, y: (x * self.scale_x, y * self.scale_y)
 
-        def scale(x, y):
-            return (x * self.scale_x, y * self.scale_y)
-        self.scale = scale
 
-        # Slide control: (lagay kona to para di magulo)
-        # 0 = Frame 0 (Introduction)
-        # 1 = Frame 1 (Sending)
-        # 2 = Frame 2 (File Confirmation)
-        # 3 = Frame 3 (Paper Selection)
-        # 4 = Frame 4 (Summary Table)
-        # 5 = Frame 5 (Exit Screen)
+        # Slide control:
+        # 0 = Intro, 1 = File Sending, 2 = File Confirmation,
+        # 3 = Paper Selection, 4 = Summary Table, 5 = Exit Screen
         self.current_slide = 0
 
-        #Setting up the variables for the app
+
+        # Application variables
         self.file_path = None
-        self.selected_size = None       
-        self.selected_color = None     
-        self.selected_copies = None     
+        self.selected_size = None
+        self.selected_color = None
+        self.selected_copies = None
         self.paper_size_cost = 0
         self.paper_color_cost = 0
-        self.image_refs = [] 
+        self.image_refs = []
 
-        #For multiple copies
-        self.copies_spinbox = tk.Spinbox(self.root, from_=1, to=5, font=("Tahoma", int(20 * self.scale_y)))
+
+        # For multiple copies (Spinbox)
+        self.copies_spinbox = tk.Spinbox(self.root, from_=1, to=5,
+                                         font=("Tahoma", int(20 * self.scale_y)))
         self.copies_spinbox.place_forget()
+
 
         self.paper_size_buttons = {}
         self.paper_color_buttons = {}
         self.copies_buttons = {}
+
 
         # Arduino (Coin Slot) variables and serial connection
         self.arduino_balance = 0.0
@@ -95,12 +285,15 @@ class InstaPrintApp:
         self.init_serial_connection()
         self.read_serial()
 
-        self.canvas = Canvas(root, bg="#FFFFFF", height=self.screen_height, width=self.screen_width,
+
+        # Main canvas for drawing slides
+        self.canvas = Canvas(root, bg="#FFFFFF",
+                             height=self.screen_height, width=self.screen_width,
                              bd=0, highlightthickness=0, relief="ridge")
         self.canvas.pack(fill=tk.BOTH, expand=True)
 
 
-        # Load logo (if available)
+        # Load logo if available
         self.logo_path = "INSTAPRINT MAIN LOGO.png"
         try:
             self.logo_tk = self.create_logo(self.logo_path, size=int(700 * self.scale_x))
@@ -109,15 +302,25 @@ class InstaPrintApp:
             self.logo_tk = None
 
 
-        # Draw the current slide
+        # Start the Wi-Fi upload server (Flask) in a separate thread
+        self.start_wifi_server()
+
+
+        # Draw the initial slide
         self.draw_slide()
 
 
-        # Bind Escape key to exit fullscreen/close the window
+        # Bind Escape key to exit fullscreen/close window
         self.root.bind("<Escape>", lambda e: self.root.destroy())
 
 
-    # Arduino connection
+        # USB file selection flag
+        self.usb_dialog_opened = False
+
+
+    # ----------------------------
+    # Arduino & Serial Functions
+    # ----------------------------
     def init_serial_connection(self):
         try:
             self.ser = serial.Serial('COM3', 9600, timeout=1)
@@ -126,6 +329,7 @@ class InstaPrintApp:
         except Exception as e:
             messagebox.showerror("Serial Error", f"Failed to open serial port: {e}")
             self.ser = None
+
 
     def read_serial(self):
         if self.ser is not None:
@@ -145,17 +349,17 @@ class InstaPrintApp:
                 print("Serial read error:", e)
         self.root.after(500, self.read_serial)
 
+
     def update_payment(self):
         total_cost = self.calculate_cost()
-        print(f"Calculated Total Cost: ₱{total_cost:.2f} (Pages: {self.get_page_count()}, Size Cost: {self.paper_size_cost}, Color Cost: {self.paper_color_cost}, Arduino Balance: ₱{self.arduino_balance:.2f})")
+        print(f"Calculated Total Cost: ₱{total_cost:.2f} (Pages: {self.get_page_count()}, "
+              f"Size Cost: {self.paper_size_cost}, Color Cost: {self.paper_color_cost}, "
+              f"Arduino Balance: ₱{self.arduino_balance:.2f})")
         if self.current_slide == 4:
             self.draw_slide()
 
 
-    # Resets the coin slot and clears the serial buffer
     def reset_arduino(self):
-        """Toggle the DTR line to force a hardware reset and clear any leftover serial data.
-        Also reset the internal coin balance."""
         if self.ser is not None:
             try:
                 self.ser.reset_input_buffer()
@@ -168,7 +372,10 @@ class InstaPrintApp:
                 print("Error resetting Arduino via DTR:", e)
         self.arduino_balance = 0.0
 
-    # Transform the files into grayscale
+
+    # ----------------------------
+    # File & Print Functions
+    # ----------------------------
     def convert_pdf_to_grayscale(self, input_pdf):
         gray_file = os.path.splitext(input_pdf)[0] + "_grayscale.pdf"
         gs_command = [
@@ -191,11 +398,10 @@ class InstaPrintApp:
             print("Error converting PDF to grayscale:", e)
             return input_pdf
 
-    # ----- Paper Color Selection (with conversion for black and white) -----
+
     def select_paper_color(self, color, cost):
         self.selected_color = color
         self.paper_color_cost = cost
-        # Update button images for paper color
         for key, data in self.paper_color_buttons.items():
             btn = data["button"]
             if key == color:
@@ -203,17 +409,15 @@ class InstaPrintApp:
             else:
                 btn.config(image=data["normal_img"])
         print(f"Selected Paper Color: {color} - Cost: {cost} peso(s)")
-
-
         if color == "Black and White" and self.file_path and self.file_path.lower().endswith(".pdf"):
             self.file_path = self.convert_pdf_to_grayscale(self.file_path)
 
-    # For logo
+
     def create_logo(self, image_path, size=400):
         img = Image.open(image_path).convert("RGBA").resize((size, size), Image.LANCZOS)
         return ImageTk.PhotoImage(img)
 
-    # For Calculation
+
     def get_page_count(self):
         if self.file_path and self.file_path.lower().endswith(".pdf"):
             try:
@@ -242,7 +446,6 @@ class InstaPrintApp:
         return total
 
 
-    # Deletes all the files in the folder (for privacy)
     def cleanup_folder(self):
         if self.file_path:
             folder = r"C:\Instaprint files"  # Change as appropriate
@@ -256,70 +459,6 @@ class InstaPrintApp:
                 print(f"Error cleaning up folder: {e}")
 
 
-    # For the slides
-    def draw_slide(self, event=None):
-        self.canvas.delete("all")
-        self.image_refs = [] 
-        if self.current_slide == 0:
-            self.display_intro_slide()
-        elif self.current_slide == 1:
-            self.display_file_sending_slide()
-        elif self.current_slide == 2:
-            self.display_file_confirmation_slide()
-        elif self.current_slide == 3:
-            self.display_paper_selection_slide()
-        elif self.current_slide == 4:
-            self.display_summary_table()
-        elif self.current_slide == 5:
-            self.display_goodbye_screen()
-        self.canvas.update_idletasks()
-
-    # To navigate the slides
-    def next_slide(self):
-        if self.current_slide == 1 and self.file_path is None:
-            messagebox.showwarning("No File Selected", "Please select a file before continuing.")
-            return
-        if self.current_slide == 3:
-            if not self.selected_size or not self.selected_color or not self.selected_copies:
-                messagebox.showwarning("Incomplete Selection", "Please select paper size, color, and copies before continuing.")
-                return
-            self.copies_spinbox.place_forget()
-        self.current_slide += 1
-        self.draw_slide()
-
-
-    def previous_slide(self):
-        if self.current_slide > 0:
-            self.current_slide -= 1
-            self.draw_slide()
-
-    #Clears the arduino 
-    def restart_application(self):
-        if self.ser:
-            try:
-                self.ser.reset_input_buffer()
-                self.ser.reset_output_buffer()
-                self.ser.setDTR(False)
-                time.sleep(0.1)
-                self.ser.setDTR(True)
-                print("Arduino reset in restart_application.")
-            except Exception as e:
-                print("Error resetting buffers in restart_application:", e)
-        self.cleanup_folder()
-        self.file_path = None
-        self.selected_size = None
-        self.selected_color = None
-        self.selected_copies = None
-        self.paper_size_cost = 0
-        self.paper_color_cost = 0
-        self.copies_spinbox.place_forget()
-        # Also reset the Arduino coin balance
-        self.reset_arduino()
-        self.current_slide = 0
-        self.draw_slide()
-
-
-    # For printing purposes
     def execute_print_job(self):
         if self.selected_size and self.selected_size.lower() == "short":
             printer_name = "EPSON L120 Series"
@@ -342,14 +481,78 @@ class InstaPrintApp:
 
     def handle_print_and_next(self):
         self.execute_print_job()
-        # After printing, assume the transaction is complete.
-        # Reset the Arduino so that coin balance is cleared.
         self.reset_arduino()
         self.current_slide = 5
         self.draw_slide()
 
 
-    # Frame 0: Intro
+    # ----------------------------
+    # Slide Drawing & Navigation
+    # ----------------------------
+    def draw_slide(self, event=None):
+        self.canvas.delete("all")
+        self.image_refs = []
+        if self.current_slide == 0:
+            self.display_intro_slide()
+        elif self.current_slide == 1:
+            self.display_file_sending_slide()
+        elif self.current_slide == 2:
+            self.display_file_confirmation_slide()
+        elif self.current_slide == 3:
+            self.display_paper_selection_slide()
+        elif self.current_slide == 4:
+            self.display_summary_table()
+        elif self.current_slide == 5:
+            self.display_goodbye_screen()
+        self.canvas.update_idletasks()
+
+
+    def next_slide(self):
+        if self.current_slide == 1 and self.file_path is None:
+            messagebox.showwarning("No File Selected", "Please select a file before continuing.")
+            return
+        if self.current_slide == 3:
+            if not self.selected_size or not self.selected_color or not self.selected_copies:
+                messagebox.showwarning("Incomplete Selection", "Please select paper size, color, and copies before continuing.")
+                return
+            self.copies_spinbox.place_forget()
+        self.current_slide += 1
+        self.draw_slide()
+
+
+    def previous_slide(self):
+        if self.current_slide > 0:
+            self.current_slide -= 1
+            self.draw_slide()
+
+
+    def restart_application(self):
+        if self.ser:
+            try:
+                self.ser.reset_input_buffer()
+                self.ser.reset_output_buffer()
+                self.ser.setDTR(False)
+                time.sleep(0.1)
+                self.ser.setDTR(True)
+                print("Arduino reset in restart_application.")
+            except Exception as e:
+                print("Error resetting Arduino:", e)
+        self.cleanup_folder()
+        self.file_path = None
+        self.selected_size = None
+        self.selected_color = None
+        self.selected_copies = None
+        self.paper_size_cost = 0
+        self.paper_color_cost = 0
+        self.copies_spinbox.place_forget()
+        self.reset_arduino()
+        self.current_slide = 0
+        self.draw_slide()
+
+
+    # ----------------------------
+    # Frame 0: Introduction Slide
+    # ----------------------------
     def display_intro_slide(self):
         self.canvas.configure(bg="#FFFFFF")
         try:
@@ -371,7 +574,8 @@ class InstaPrintApp:
             print(f"Error loading frame0_image_2.png: {e}")
         try:
             btn_img = PhotoImage(file=relative_to_assets("frame0", "frame0_button_1.png"))
-            continue_btn = Button(self.root, image=btn_img, borderwidth=0, highlightthickness=0, command=self.next_slide, relief="flat")
+            continue_btn = Button(self.root, image=btn_img, borderwidth=0, highlightthickness=0,
+                                  command=self.next_slide, relief="flat")
             x, y = self.scale(960, 890)
             self.canvas.create_window(x, y, window=continue_btn, width=int(327 * self.scale_x), height=int(82 * self.scale_y))
             self.image_refs.append(btn_img)
@@ -379,7 +583,9 @@ class InstaPrintApp:
             print(f"Error loading frame0_button_1.png: {e}")
 
 
-    # Frame 1: File Sending
+    # ----------------------------
+    # Frame 1: File Sending Slide
+    # ----------------------------
     def display_file_sending_slide(self):
         self.canvas.configure(bg="#FFFFFF")
         images = [
@@ -390,7 +596,8 @@ class InstaPrintApp:
             ("frame1_image_5.png", (1366, 449)),
             ("frame1_image_6.png", (589, 449)),
             ("frame1_image_7.png", (85, 1000)),
-            ("frame1_image_8.png", (963, 320))
+            ("frame1_image_8.png", (963, 320)),
+            ("frame1_image_9.png", (975, 1025))
         ]
         for img_name, pos in images:
             try:
@@ -401,7 +608,7 @@ class InstaPrintApp:
             except Exception as e:
                 print(f"Error loading {img_name}: {e}")
         buttons = [
-            ("frame1_button_1.png", (590, 685), self.handle_usb_transfer),
+            ("frame1_button_1.png", (590, 677), self.handle_usb_transfer),
             ("frame1_button_2.png", (590, 570), self.handle_bluetooth),
             ("frame1_button_3.png", (960, 830), self.next_slide),
             ("frame1_button_4.png", (1370, 610), self.select_file)
@@ -409,15 +616,64 @@ class InstaPrintApp:
         for img_name, pos, command in buttons:
             try:
                 btn_img = PhotoImage(file=relative_to_assets("frame1", img_name))
-                btn = Button(self.root, image=btn_img, borderwidth=0, highlightthickness=0, command=command, relief="flat")
+                btn = Button(self.root, image=btn_img, borderwidth=0, highlightthickness=0,
+                             command=command, relief="flat")
                 x, y = self.scale(*pos)
                 self.canvas.create_window(x, y, window=btn)
                 self.image_refs.append(btn_img)
             except Exception as e:
                 print(f"Error loading {img_name}: {e}")
+        # ----------------------------
+        # NEW: Wi-Fi Button in Frame 1 (Using frame1_button_5.png)
+        # ----------------------------
+        try:
+            wifi_btn_img = PhotoImage(file=relative_to_assets("frame1", "frame1_button_5.png"))
+            wifi_btn = Button(self.root, image=wifi_btn_img, borderwidth=0, highlightthickness=0,
+                              command=self.show_wifi_qr_popup, relief="flat")
+            x, y = self.scale(590, 780)
+            self.canvas.create_window(x, y, window=wifi_btn)
+            self.image_refs.append(wifi_btn_img)
+        except Exception as e:
+            print("Error loading frame1_button_5.png:", e)
 
 
-    # Frame 2: File Confirmation
+    # ----------------------------
+    # Wi-Fi QR Code Popup (Frame 1)
+    # ----------------------------
+    def show_wifi_qr_popup(self):
+        local_ip = get_local_ip()
+        wifi_url = f"{SCHEME}://{local_ip}:5000/upload"
+        try:
+            qr = pyqrcode.create(wifi_url)
+            qr_path = os.path.join(WIFI_STATIC_FOLDER, 'qr.png')
+            qr.png(qr_path, scale=8)
+        except Exception as e:
+            messagebox.showerror("QR Code Error", f"Error generating QR code: {e}")
+            return
+        popup = tk.Toplevel(self.root)
+        popup.title("Wi-Fi File Upload")
+        popup.configure(bg="#1e3c72")
+        popup.geometry("300x400")
+        try:
+            qr_img = Image.open(qr_path)
+            qr_photo = ImageTk.PhotoImage(qr_img)
+        except Exception as e:
+            messagebox.showerror("Image Error", f"Error loading QR image: {e}")
+            popup.destroy()
+            return
+        lbl = tk.Label(popup, image=qr_photo, bg="#1e3c72")
+        lbl.image = qr_photo
+        lbl.pack(pady=20)
+        url_label = tk.Label(popup, text=wifi_url, font=("Arial", 12), fg="white", bg="#1e3c72")
+        url_label.pack(pady=10)
+        close_btn = Button(popup, text="Close", font=("Arial", 14), command=popup.destroy,
+                           bg="#ffffff", fg="#1e3c72")
+        close_btn.pack(pady=20)
+
+
+    # ----------------------------
+    # Frame 2: File Confirmation Slide
+    # ----------------------------
     def display_file_confirmation_slide(self):
         self.canvas.configure(bg="#FFFFFF")
         images = [
@@ -445,7 +701,8 @@ class InstaPrintApp:
         for img_name, pos, command in buttons:
             try:
                 btn_img = PhotoImage(file=relative_to_assets("frame2", img_name))
-                btn = Button(self.root, image=btn_img, borderwidth=0, highlightthickness=0, command=command, relief="flat")
+                btn = Button(self.root, image=btn_img, borderwidth=0, highlightthickness=0,
+                             command=command, relief="flat")
                 x, y = self.scale(*pos)
                 self.canvas.create_window(x, y, window=btn)
                 self.image_refs.append(btn_img)
@@ -453,7 +710,9 @@ class InstaPrintApp:
                 print(f"Error loading {img_name}: {e}")
 
 
-    # Frame 3: Paper Selection
+    # ----------------------------
+    # Frame 3: Paper Selection Slide
+    # ----------------------------
     def get_enlarged_image(self, path, factor):
         try:
             img = Image.open(path)
@@ -479,8 +738,7 @@ class InstaPrintApp:
             ("frame3_image_8.png", (960, 164)),
             ("frame3_image_9.png", (960, 701)),
             ("frame3_image_10.png", (544, 331)),
-            ("frame3_image_11.png", (1348, 332)),
-            ("frame3_image_12.png", (985, 1030))
+            ("frame3_image_11.png", (1348, 332))
         ]
         for img_name, pos in images:
             try:
@@ -490,9 +748,7 @@ class InstaPrintApp:
                 self.image_refs.append(img)
             except Exception as e:
                 print(f"Error loading {img_name}: {e}")
-
-        #Enlarge the buttons
-        #For Size
+        # For Size Buttons
         self.paper_size_buttons = {}
         paper_size_buttons_data = [
             ("frame3_button_1.png", (1340, 460), "Short", 1),
@@ -503,7 +759,8 @@ class InstaPrintApp:
                 img_path = relative_to_assets("frame3", img_name)
                 normal_img = PhotoImage(file=img_path)
                 selected_img = self.get_enlarged_image(img_path, 1.2)
-                btn = Button(self.root, image=normal_img, borderwidth=0, highlightthickness=0, command=lambda s=size, c=cost: self.select_paper_size(s, c), relief="flat")
+                btn = Button(self.root, image=normal_img, borderwidth=0, highlightthickness=0,
+                             command=lambda s=size, c=cost: self.select_paper_size(s, c), relief="flat")
                 self.paper_size_buttons[size] = {
                     "button": btn,
                     "normal_img": normal_img,
@@ -516,8 +773,7 @@ class InstaPrintApp:
                 self.image_refs.append(selected_img)
             except Exception as e:
                 print(f"Error loading {img_name}: {e}")
-        
-        #For Color
+        # For Color Buttons
         self.paper_color_buttons = {}
         paper_color_buttons_data = [
             ("frame3_button_2.png", (550, 460), "Black and White", 2),
@@ -528,7 +784,8 @@ class InstaPrintApp:
                 img_path = relative_to_assets("frame3", img_name)
                 normal_img = PhotoImage(file=img_path)
                 selected_img = self.get_enlarged_image(img_path, 1.2)
-                btn = Button(self.root, image=normal_img, borderwidth=0, highlightthickness=0, command=lambda col=color, c=cost: self.select_paper_color(col, c), relief="flat")
+                btn = Button(self.root, image=normal_img, borderwidth=0, highlightthickness=0,
+                             command=lambda col=color, c=cost: self.select_paper_color(col, c), relief="flat")
                 self.paper_color_buttons[color] = {
                     "button": btn,
                     "normal_img": normal_img,
@@ -541,8 +798,7 @@ class InstaPrintApp:
                 self.image_refs.append(selected_img)
             except Exception as e:
                 print(f"Error loading {img_name}: {e}")
-        
-        #For Copies
+        # For Copies Buttons
         self.copies_buttons = {}
         copies_buttons_data = [
             ("frame3_button_4.png", (775, 815), "One Copy", None),
@@ -553,7 +809,8 @@ class InstaPrintApp:
                 img_path = relative_to_assets("frame3", img_name)
                 normal_img = PhotoImage(file=img_path)
                 selected_img = self.get_enlarged_image(img_path, 1.2)
-                btn = Button(self.root, image=normal_img, borderwidth=0, highlightthickness=0, command=lambda opt=option: self.select_copies(opt), relief="flat")
+                btn = Button(self.root, image=normal_img, borderwidth=0, highlightthickness=0,
+                             command=lambda opt=option: self.select_copies(opt), relief="flat")
                 self.copies_buttons[option] = {
                     "button": btn,
                     "normal_img": normal_img,
@@ -566,8 +823,7 @@ class InstaPrintApp:
                 self.image_refs.append(selected_img)
             except Exception as e:
                 print(f"Error loading {img_name}: {e}")
-
-        # For multiple copies
+        # Show spinbox if Multiple Copies is selected
         if self.selected_copies == "Multiple Copies":
             try:
                 x, y = self.scale(928, 875)
@@ -579,8 +835,7 @@ class InstaPrintApp:
                 print(f"Error updating spinbox position: {e}")
         else:
             self.copies_spinbox.place_forget()
-
-        #Back and Continue button
+        # Navigation Buttons for Frame 3
         nav_buttons = [
             ("frame3_button_7.png", (1580, 875), self.next_slide),
             ("frame3_button_8.png", (340, 875), self.previous_slide)
@@ -588,12 +843,14 @@ class InstaPrintApp:
         for img_name, pos, command in nav_buttons:
             try:
                 btn_img = PhotoImage(file=relative_to_assets("frame3", img_name))
-                btn = Button(self.root, image=btn_img, borderwidth=0, highlightthickness=0, command=command, relief="flat")
+                btn = Button(self.root, image=btn_img, borderwidth=0, highlightthickness=0,
+                             command=command, relief="flat")
                 x, y = self.scale(*pos)
                 self.canvas.create_window(x, y, window=btn)
                 self.image_refs.append(btn_img)
             except Exception as e:
                 print(f"Error loading {img_name}: {e}")
+
 
     def select_paper_size(self, size, cost):
         self.selected_size = size
@@ -625,7 +882,10 @@ class InstaPrintApp:
         else:
             self.copies_spinbox.place_forget()
 
-    # Frame 4: Table
+
+    # ----------------------------
+    # Frame 4: Summary Table Slide
+    # ----------------------------
     def display_summary_table(self):
         self.canvas.configure(bg="#FFFFFF")
         total_cost = self.calculate_cost()
@@ -640,7 +900,7 @@ class InstaPrintApp:
             self.canvas.create_image(x, y, image=img)
             self.image_refs.append(img)
         except Exception as e:
-            print(f"Error loading frame4_image_1.png: {e}")
+            print(f"Error loading frame4 images: {e}")
         summary_table = ttk.Treeview(self.root, columns=("SETTINGS", "DETAILS"), show="headings", height=5)
         summary_table.heading("SETTINGS", text="SETTINGS", anchor=tk.CENTER)
         summary_table.heading("DETAILS", text="DETAILS", anchor=tk.CENTER)
@@ -684,7 +944,9 @@ class InstaPrintApp:
                 print(f"Error loading frame4_button_2(second).png: {e}")
 
 
-    # Frame 5: Exit Screen
+    # ----------------------------
+    # Frame 5: Exit Screen Slide
+    # ----------------------------
     def display_goodbye_screen(self):
         self.canvas.configure(bg="#FFFFFF")
         try:
@@ -714,22 +976,19 @@ class InstaPrintApp:
             self.canvas.create_window(x, y, window=restart_btn, width=int(324 * self.scale_x), height=int(117 * self.scale_y))
             self.image_refs.append(btn_img)
         except Exception as e:
-            print(f"Error loading frame5_button_1: {e}")
+            print(f"Error loading frame5_button_1.png: {e}")
 
-    # For Back end
-    # File selection
+
+    # ----------------------------
+    # File Selection & USB/Bluetooth Transfer
+    # ----------------------------
     def select_file(self):
-        custom_folder = r"C:\INSTAPRINTMACHINE"  # Change as needed
+        # A tkinter file selection box for the user to choose a file from the designated folder
+        custom_folder = r"C:\INSTAPRINTMACHINE"  # Adjust as needed
         top = tk.Toplevel(self.root)
-        top.title("Confirm")
-        top.geometry("600x400")
+        top.title("Select a File")
+        center_window(top, 600, 400)
         top.resizable(False, False)
-        top.update_idletasks()
-        width = top.winfo_width()
-        height = top.winfo_height()
-        x = (top.winfo_screenwidth() // 2) - (width // 2)
-        y = (top.winfo_screenheight() // 2) - (height // 2)
-        top.geometry(f"600x400+{x}+{y}")
         frame = tk.Frame(top)
         frame.pack(fill="both", expand=True, padx=10, pady=10)
         scrollbar = tk.Scrollbar(frame)
@@ -741,16 +1000,14 @@ class InstaPrintApp:
             allowed_exts = ('.pdf', '.docx', '.doc')
             files = [f for f in os.listdir(custom_folder) if os.path.isfile(os.path.join(custom_folder, f)) and f.lower().endswith(allowed_exts)]
             print("Files found:", files)
-            if not files:
-                messagebox.showinfo("No Files", "No files detected, please send a file first.")
-                top.destroy()
-                return
             for f in files:
                 listbox.insert(tk.END, f)
         except Exception as e:
-            messagebox.showerror("Error", f"Could not access folder:\n{e}")
+            print(f"Error accessing folder: {e}")
             top.destroy()
             return
+
+
         def on_select():
             selected = listbox.curselection()
             if selected:
@@ -761,20 +1018,20 @@ class InstaPrintApp:
                 top.destroy()
             else:
                 messagebox.showwarning("No Selection", "Please select a file.")
+
+
         select_btn = tk.Button(top, text="Select File", font=("Tahoma", int(16 * self.scale_y)), command=on_select)
         select_btn.pack(pady=10)
         top.grab_set()
 
 
-    # USB Transfer
     def handle_usb_transfer(self):
-        messagebox.showinfo("USB Transfer", "Please insert a USB")
+        messagebox.showinfo("USB Transfer", "Please insert a USB drive.")
         self.usb_dialog_opened = False
         self.poll_for_usb()
 
 
     def poll_for_usb(self):
-        import psutil
         usb_drives = []
         for p in psutil.disk_partitions(all=False):
             if 'removable' in p.opts.lower():
@@ -790,34 +1047,59 @@ class InstaPrintApp:
             self.close_usb_explorer(drive)
             if not self.usb_dialog_opened:
                 self.usb_dialog_opened = True
-                file_selected = filedialog.askopenfilename(
-                    title="Select a file from your USB drive",
-                    initialdir=drive,
-                    filetypes=[("PDF Files", "*.pdf"), ("Word Documents", "*.doc;*.docx")]
-                )
-                if file_selected:
-                    if not file_selected.lower().endswith(('.pdf', '.doc', '.docx')):
-                        messagebox.showerror("File Error", "Selected file type is not supported. Please select a PDF or Microsoft Word document.")
-                        self.usb_dialog_opened = False
-                        return
-                    self.file_path = file_selected
-                    messagebox.showinfo("USB Transfer", "File selected successfully!")
-                else:
-                    messagebox.showerror("USB Transfer", "No file selected. Please try again.")
-                    self.usb_dialog_opened = False
+                self.usb_file_selection(drive)
         else:
             self.root.after(1000, self.poll_for_usb)
 
 
+    def usb_file_selection(self, drive):
+        top = tk.Toplevel(self.root)
+        top.title("Select a File from USB")
+        center_window(top, 600, 400)
+        top.resizable(False, False)
+        top.protocol("WM_DELETE_WINDOW", top.destroy)
+        frame = tk.Frame(top)
+        frame.pack(fill="both", expand=True, padx=10, pady=10)
+        scrollbar = tk.Scrollbar(frame)
+        scrollbar.pack(side="right", fill="y")
+        listbox = tk.Listbox(frame, font=("Tahoma", 16), yscrollcommand=scrollbar.set)
+        listbox.pack(side="left", fill="both", expand=True)
+        scrollbar.config(command=listbox.yview)
+        allowed_exts = ('.pdf', '.docx', '.doc')
+        try:
+            files = [f for f in os.listdir(drive) if os.path.isfile(os.path.join(drive, f)) and f.lower().endswith(allowed_exts)]
+            print("Files found on USB:", files)
+            if files:
+                for f in files:
+                    listbox.insert(tk.END, f)
+        except Exception as e:
+            print(f"Error accessing the USB drive: {e}")
+            top.destroy()
+            return
+
+
+        def on_select():
+            selected = listbox.curselection()
+            if selected:
+                file_name = listbox.get(selected[0])
+                full_path = os.path.join(drive, file_name)
+                self.file_path = full_path
+                print(f"File selected from USB: {full_path}")
+                top.destroy()
+            else:
+                messagebox.showwarning("No Selection", "Please select a file.")
+        select_btn = tk.Button(top, text="Select File", font=("Tahoma", 16), command=on_select)
+        select_btn.pack(pady=10)
+        self.root.wait_window(top)
+
+
     def close_usb_explorer(self, drive):
         try:
-            import win32com.client
-            import urllib.parse
             shell = win32com.client.Dispatch("Shell.Application")
             for window in shell.Windows():
                 try:
                     location = window.LocationURL
-                    if location and location.startswith("file:/C:\\INSTAPRINTMACHINE///receivet"):
+                    if location and location.startswith("file:/C:\\INSTAPRINTMACHINE"):
                         local_path = urllib.parse.unquote(location[8:]).replace('/', '\\')
                         if os.path.normcase(os.path.abspath(local_path)) == os.path.normcase(os.path.abspath(drive)):
                             window.Quit()
@@ -826,13 +1108,37 @@ class InstaPrintApp:
         except Exception as e:
             print("Error closing USB explorer windows:", e)
 
-    # -Bluetooth transfer
+
     def handle_bluetooth(self):
         try:
             subprocess.Popen(["C:\\INSTAPRINT MACHINE\\receive.bat"], shell=True)
         except Exception as e:
-            messagebox.showerror("Error", f"Failed to run receive.bat: {str(e)}")
+            messagebox.showerror("Bluetooth Error", f"Failed to run receive.bat: {str(e)}")
 
+
+    def select_paper_size(self, size, cost):
+        self.selected_size = size
+        self.paper_size_cost = cost
+        for s, data in self.paper_size_buttons.items():
+            btn = data["button"]
+            if s == size:
+                btn.config(image=data["selected_img"])
+            else:
+                btn.config(image=data["normal_img"])
+        print(f"Selected Paper Size: {size} - Cost: {cost} peso(s)")
+
+
+    def start_wifi_server(self):
+        # Start the Flask Wi-Fi upload server in a separate daemon thread.
+        flask_thread = threading.Thread(target=run_flask_server)
+        flask_thread.daemon = True
+        flask_thread.start()
+        print("Wi-Fi upload server started on port 5000.")
+
+
+# =============================================================================
+# MAIN EXECUTION
+# =============================================================================
 if __name__ == "__main__":
     root = tk.Tk()
     app = InstaPrintApp(root)
