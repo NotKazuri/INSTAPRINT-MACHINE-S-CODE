@@ -692,15 +692,23 @@ height=int(82 * self.scale_y))
             # NEW FEATURE: Add page range selection controls 
             total_pages = self.get_page_count() 
             page_sel_frame = tk.Frame(self.canvas, bg="white") 
+
             tk.Label(page_sel_frame, text="Print Pages From:", bg="white", font=("Tahoma", int(20 * self.scale_y))).pack(side="left", padx=5) 
-            self.print_from_spinbox = tk.Spinbox(page_sel_frame, from_=1, to=total_pages, width=5, font=("Tahoma", int(20 * self.scale_y))) 
+
+            # Bind to an IntVar that defaults to 1
+            from_var = tk.IntVar(value=1)
+            self.print_from_spinbox = tk.Spinbox(page_sel_frame, from_=1, to=total_pages, width=5, font=("Tahoma", int(20 * self.scale_y)), textvariable=from_var)
             self.print_from_spinbox.pack(side="left", padx=5) 
+
             tk.Label(page_sel_frame, text="To:", bg="white", font=("Tahoma", int(20 * self.scale_y))).pack(side="left", padx=5) 
-            self.print_to_spinbox = tk.Spinbox(page_sel_frame, from_=1, to=total_pages, width=5, font=("Tahoma", int(20 * self.scale_y))) 
+            # Optionally, you might want the "To:" spinbox to default to total_pages:
+            to_var = tk.IntVar(value=total_pages)
+            self.print_to_spinbox = tk.Spinbox(page_sel_frame, from_=1, to=total_pages, width=5, font=("Tahoma", int(20 * self.scale_y)), textvariable=to_var)
             self.print_to_spinbox.pack(side="left", padx=5) 
+
             # Place the page selection frame on the canvas 
             x_sel, y_sel = self.scale(960, 950) 
-            self.canvas.create_window(x_sel, y_sel, window=page_sel_frame) 
+            self.canvas.create_window(x_sel, y_sel, window=page_sel_frame)
         else: 
             x, y = self.scale(960, 500) 
             self.canvas.create_text(x, y, text="Preview not available for this file type.", 
