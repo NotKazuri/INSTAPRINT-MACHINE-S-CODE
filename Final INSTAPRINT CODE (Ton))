@@ -1,5 +1,5 @@
 import tkinter as tk 
-from tkinter import filedialog, messagebox, Canvas, Button, PhotoImage, ttk 
+from tkinter import filedialog, messagebox, Canvas, Button, PhotoImage, ttk
 from pathlib import Path 
 import os 
 import subprocess 
@@ -17,14 +17,17 @@ import threading
 import socket 
 import pyqrcode 
 from flask import Flask, request, render_template_string 
-import fitz  # PyMuPDF for PDF rendering
+import fitz  # PyMuPDF for PDF rendering 
 
-# ============================================================================
+# 
+# ==========================================================================
+# == 
 # ASSET & UTILITY FUNCTIONS 
-# ============================================================================
+# ==========================================================================
+# == 
 # Directory for the PNGs and other assets 
 OUTPUT_PATH = Path(__file__).parent 
-ASSETS_PATH = Path(r"C:\InstaPrint Machine\build\assets")  # Adjust as needed
+ASSETS_PATH = Path(r"C:\InstaPrint Machine\build\assets")  # Adjust as needed 
 
 def relative_to_assets(frame: str, path: str) -> str: 
     return str(ASSETS_PATH / frame / Path(path)) 
@@ -50,18 +53,19 @@ def set_printer_color(printer_name, color_choice):
             devmode.dmColor = 1  # Black and White 
         else: 
             devmode.dmColor = 2  # Colored 
-        win32print.DocumentProperties(None, hPrinter, printer_name, 
-                                      devmode, devmode, 
-                                      win32print.DM_IN_BUFFER | win32print.DM_OUT_BUFFER) 
+        win32print.DocumentProperties(None, hPrinter, printer_name, devmode, devmode, win32print.DM_IN_BUFFER | win32print.DM_OUT_BUFFER) 
     except Exception as e: 
         print("Error setting printer color:", e) 
     finally: 
         if hPrinter: 
             win32print.ClosePrinter(hPrinter) 
 
-# ============================================================================
+# 
+# ==========================================================================
+# == 
 # FLASK SERVER FOR WI‑FI FILE UPLOAD 
-# ============================================================================
+# ==========================================================================
+# == 
 # The Flask app runs in a separate thread to allow Wi‑Fi uploads. 
 flask_app = Flask(__name__) 
 
@@ -164,7 +168,8 @@ def wifi_upload():
         if file.filename == '': 
             return 'No file selected.' 
         filepath = os.path.join(WIFI_UPLOAD_FOLDER, file.filename) 
-        file.save(filepath) 
+        file.save(filepath)
+        # Note: This Flask route is separate from the Tkinter app.
         return f'File "{file.filename}" uploaded successfully to "C:\\INSTAPRINTMACHINE"!' 
     return ''' 
     <!doctype html> 
@@ -207,13 +212,16 @@ def wifi_upload():
     ''' 
 
 def run_flask_server(): 
-    flask_app.run(host='0.0.0.0', port=5000, debug=False, use_reloader=False, 
-                  ssl_context=SSL_CONTEXT) 
+    flask_app.run(host='0.0.0.0', port=5000, debug=False, use_reloader=False, ssl_context=SSL_CONTEXT) 
 
-# ============================================================================
+# 
+# ==========================================================================
+# == 
 # INSTANT PRINT MACHINE APPLICATION 
-# ============================================================================
+# ==========================================================================
+# == 
 class InstaPrintApp: 
+
     def __init__(self, root): 
         self.root = root 
         self.root.title("InstaPrint Machine") 
@@ -244,16 +252,21 @@ class InstaPrintApp:
         self.paper_size_cost = 0 
         self.paper_color_cost = 0 
         self.image_refs = [] 
-        self.preview_images = []  # To hold PDF preview images
+        self.preview_images = []  # To hold PDF preview images 
 
         # For multiple copies (Spinbox) 
-        self.copies_spinbox = tk.Spinbox(self.root, from_=1, to=5, 
-                                         font=("Tahoma", int(20 * self.scale_y))) 
+        self.copies_spinbox = tk.Spinbox(self.root, from_=1, to=5, font=("Tahoma", int(20 * self.scale_y))) 
         self.copies_spinbox.place_forget() 
 
         self.paper_size_buttons = {} 
         self.paper_color_buttons = {} 
         self.copies_buttons = {} 
+
+        # USB file selection flag 
+        self.usb_dialog_opened = False 
+
+        # Save reference for the Send File button (Frame 1)
+        self.send_file_btn = None
 
         # Arduino (Coin Slot) variables and serial connection 
         self.arduino_balance = 0.0 
@@ -262,9 +275,7 @@ class InstaPrintApp:
         self.read_serial() 
 
         # Main canvas for drawing slides 
-        self.canvas = Canvas(root, bg="#FFFFFF", 
-                             height=self.screen_height, width=self.screen_width, 
-                             bd=0, highlightthickness=0, relief="ridge") 
+        self.canvas = Canvas(root, bg="#FFFFFF", height=self.screen_height, width=self.screen_width, bd=0, highlightthickness=0, relief="ridge") 
         self.canvas.pack(fill=tk.BOTH, expand=True) 
 
         # Load logo if available 
@@ -275,7 +286,7 @@ class InstaPrintApp:
             print(f"Error loading logo: {e}") 
             self.logo_tk = None 
 
-        # Start the Wi-Fi upload server (Flask) in a separate thread 
+        # Start the Wi‑Fi upload server (Flask) in a separate thread 
         self.start_wifi_server() 
 
         # Draw the initial slide 
@@ -283,9 +294,6 @@ class InstaPrintApp:
 
         # Bind Escape key to exit fullscreen/close window 
         self.root.bind("<Escape>", lambda e: self.root.destroy()) 
-
-        # USB file selection flag 
-        self.usb_dialog_opened = False 
 
     # ---------------------------- 
     # Arduino & Serial Functions 
@@ -319,9 +327,7 @@ class InstaPrintApp:
 
     def update_payment(self): 
         total_cost = self.calculate_cost() 
-        print(f"Calculated Total Cost: ₱{total_cost:.2f} (Pages: {self.get_page_count()}, " 
-              f"Size Cost: {self.paper_size_cost}, Color Cost: {self.paper_color_cost}, " 
-              f"Arduino Balance: ₱{self.arduino_balance:.2f})") 
+        print(f"Calculated Total Cost: ₱{total_cost:.2f} (Pages: {self.get_page_count()}, Size Cost: {self.paper_size_cost}, Color Cost: {self.paper_color_cost}, Arduino Balance: ₱{self.arduino_balance:.2f})") 
         if self.current_slide == 4: 
             self.draw_slide() 
 
@@ -363,6 +369,41 @@ class InstaPrintApp:
             print("Error converting PDF to grayscale:", e) 
             return input_pdf 
 
+    def convert_pdf_to_grayscale_with_progress(self, input_pdf): 
+        # NEW FEATURE: Display a progress bar during conversion 
+        progress_window = tk.Toplevel(self.root)
+        progress_window.title("Converting to Black and White")
+        progress_label = tk.Label(progress_window, text="Converting file... Please wait.")
+        progress_label.pack(padx=20, pady=10)
+        progress_var = tk.DoubleVar(value=0)
+        progress_bar = ttk.Progressbar(progress_window, variable=progress_var, maximum=100, length=300)
+        progress_bar.pack(padx=20, pady=10)
+        center_window(progress_window, 400, 150)
+
+        conversion_done = threading.Event()
+        result_container = {}
+        def conversion_task():
+            new_file = self.convert_pdf_to_grayscale(input_pdf)
+            result_container['result'] = new_file
+            conversion_done.set()
+
+        thread = threading.Thread(target=conversion_task)
+        thread.start()
+
+        def update_progress():
+            if conversion_done.is_set():
+                progress_var.set(100)
+                progress_window.update_idletasks()
+                progress_window.after(500, progress_window.destroy)
+                self.file_path = result_container.get('result', input_pdf)
+            else:
+                current = progress_var.get()
+                if current < 95:
+                    progress_var.set(current + 5)
+                progress_window.after(200, update_progress)
+        update_progress()
+        progress_window.grab_set()
+
     def select_paper_color(self, color, cost): 
         self.selected_color = color 
         self.paper_color_cost = cost 
@@ -373,8 +414,9 @@ class InstaPrintApp:
             else: 
                 btn.config(image=data["normal_img"]) 
         print(f"Selected Paper Color: {color} - Cost: {cost} peso(s)") 
-        if color == "Black and White" and self.file_path and self.file_path.lower().endswith(".pdf"): 
-            self.file_path = self.convert_pdf_to_grayscale(self.file_path) 
+        if color == "Black and White" and self.file_path and self.file_path.lower().endswith(".pdf"):
+            # Use the new conversion method with a progress bar
+            self.convert_pdf_to_grayscale_with_progress(self.file_path)
 
     def create_logo(self, image_path, size=400): 
         img = Image.open(image_path).convert("RGBA").resize((size, size), Image.LANCZOS) 
@@ -425,34 +467,50 @@ class InstaPrintApp:
             printer_name = "Canon MP280 series Printer (Copy 1)" 
         else: 
             printer_name = "EPSON L120 Series" 
-        set_printer_color(printer_name, self.selected_color) 
-        try: 
-            win32print.SetDefaultPrinter(printer_name) 
+        set_printer_color(printer_name, self.selected_color)
+        try:
+            win32print.SetDefaultPrinter(printer_name)
+            # Check printer status before printing
+            try:
+                hPrinter = win32print.OpenPrinter(printer_name)
+                printer_info = win32print.GetPrinter(hPrinter, 2)
+                if printer_info["Status"] & win32print.PRINTER_STATUS_OFFLINE:
+                    messagebox.showerror("Printer Error", "The printer is not properly connected or is offline.")
+                    win32print.ClosePrinter(hPrinter)
+                    return
+                if printer_info["Status"] & win32print.PRINTER_STATUS_PAPEROUT:
+                    messagebox.showerror("Printer Error", "The printer is out of paper.")
+                    win32print.ClosePrinter(hPrinter)
+                    return
+                win32print.ClosePrinter(hPrinter)
+            except Exception as status_e:
+                messagebox.showerror("Printer Error", f"Error checking printer status: {status_e}")
+                return
+
             if self.selected_copies == "Multiple Copies": 
                 copies = int(self.copies_spinbox.get()) 
             else: 
                 copies = 1 
 
             file_to_print = self.file_path 
-            # NEW FEATURE: If a PDF is selected and page range spinboxes exist, create a temporary PDF for printing only the selected pages.
-            if file_to_print.lower().endswith(".pdf") and hasattr(self, 'print_from_spinbox') and hasattr(self, 'print_to_spinbox'):
-                try:
-                    reader = PdfReader(file_to_print)
-                    total_pages = len(reader.pages)
-                    print_from = int(self.print_from_spinbox.get())
-                    print_to = int(self.print_to_spinbox.get())
-                    if print_from < 1 or print_to > total_pages or print_from > print_to:
-                        messagebox.showwarning("Invalid Page Range", "The selected page range is invalid. Printing entire document.")
-                    else:
-                        writer = PdfWriter()
-                        for i in range(print_from - 1, print_to):
-                            writer.add_page(reader.pages[i])
-                        temp_pdf = os.path.splitext(file_to_print)[0] + "_print_range.pdf"
-                        with open(temp_pdf, "wb") as f:
-                            writer.write(f)
-                        file_to_print = temp_pdf
-                except Exception as e:
-                    print("Error creating temporary PDF for selected page range:", e)
+            if file_to_print.lower().endswith(".pdf") and hasattr(self, 'print_from_spinbox') and hasattr(self, 'print_to_spinbox'): 
+                try: 
+                    reader = PdfReader(file_to_print) 
+                    total_pages = len(reader.pages) 
+                    print_from = int(self.print_from_spinbox.get()) 
+                    print_to = int(self.print_to_spinbox.get()) 
+                    if print_from < 1 or print_to > total_pages or print_from > print_to: 
+                        messagebox.showwarning("Invalid Page Range", "The selected page range is invalid. Printing entire document.") 
+                    else: 
+                        writer = PdfWriter() 
+                        for i in range(print_from - 1, print_to): 
+                            writer.add_page(reader.pages[i]) 
+                        temp_pdf = os.path.splitext(file_to_print)[0] + "_print_range.pdf" 
+                        with open(temp_pdf, "wb") as f: 
+                            writer.write(f) 
+                        file_to_print = temp_pdf 
+                except Exception as e: 
+                    print("Error creating temporary PDF for selected page range:", e) 
             for i in range(copies): 
                 win32api.ShellExecute(0, "print", file_to_print, None, ".", 0) 
         except Exception as e: 
@@ -547,11 +605,9 @@ class InstaPrintApp:
             print(f"Error loading frame0_image_2.png: {e}") 
         try: 
             btn_img = PhotoImage(file=relative_to_assets("frame0", "frame0_button_1.png")) 
-            continue_btn = Button(self.root, image=btn_img, borderwidth=0, highlightthickness=0, 
-                                  command=self.next_slide, relief="flat") 
+            continue_btn = Button(self.root, image=btn_img, borderwidth=0, highlightthickness=0, command=self.next_slide, relief="flat") 
             x, y = self.scale(960, 890) 
-            self.canvas.create_window(x, y, window=continue_btn, width=int(327 * self.scale_x), 
-height=int(82 * self.scale_y)) 
+            self.canvas.create_window(x, y, window=continue_btn, width=int(327 * self.scale_x), height=int(82 * self.scale_y)) 
             self.image_refs.append(btn_img) 
         except Exception as e: 
             print(f"Error loading frame0_button_1.png: {e}") 
@@ -592,9 +648,10 @@ height=int(82 * self.scale_y))
                 x, y = self.scale(*pos) 
                 self.canvas.create_window(x, y, window=btn) 
                 self.image_refs.append(btn_img) 
+                if command == self.select_file:
+                    self.send_file_btn = btn
             except Exception as e: 
                 print(f"Error loading {img_name}: {e}") 
-        # NEW: Wi-Fi Button in Frame 1 
         try: 
             wifi_btn_img = PhotoImage(file=relative_to_assets("frame1", "frame1_button_5.png")) 
             wifi_btn = Button(self.root, image=wifi_btn_img, borderwidth=0, highlightthickness=0, command=self.show_wifi_qr_popup, relief="flat") 
@@ -607,6 +664,7 @@ height=int(82 * self.scale_y))
     # ---------------------------- 
     # Wi-Fi QR Code Popup (Frame 1) 
     def show_wifi_qr_popup(self): 
+        messagebox.showinfo("Wi‑Fi", "Please connect to neu-student")
         local_ip = get_local_ip() 
         wifi_url = f"{SCHEME}://{local_ip}:5000/upload" 
         try: 
@@ -617,7 +675,7 @@ height=int(82 * self.scale_y))
             messagebox.showerror("QR Code Error", f"Error generating QR code: {e}") 
             return 
         popup = tk.Toplevel(self.root) 
-        popup.title("Wi-Fi File Upload") 
+        popup.title("Wi‑Fi File Upload") 
         popup.configure(bg="#1e3c72") 
         popup.geometry("300x400") 
         try: 
@@ -654,11 +712,8 @@ height=int(82 * self.scale_y))
                 self.image_refs.append(img) 
             except Exception as e: 
                 print(f"Error loading {img_name}: {e}") 
-        # Instead of displaying just the file name, show a scrollable preview of the PDF 
         if self.file_path and self.file_path.lower().endswith(".pdf"): 
-            # Create a frame to hold the scrollable preview 
             preview_frame = tk.Frame(self.canvas, bg="white") 
-            # Set desired preview size 
             preview_width = 300 
             preview_height = 450 
             preview_canvas = tk.Canvas(preview_frame, bg="white", width=preview_width, height=preview_height) 
@@ -666,7 +721,6 @@ height=int(82 * self.scale_y))
             preview_canvas.configure(yscrollcommand=v_scrollbar.set) 
             v_scrollbar.pack(side="right", fill="y") 
             preview_canvas.pack(side="left", fill="both", expand=True) 
-            # Create an inner frame to contain PDF page images 
             inner_frame = tk.Frame(preview_canvas, bg="white") 
             preview_canvas.create_window((0, 0), window=inner_frame, anchor="nw", width=preview_width) 
             def on_configure(event): 
@@ -684,35 +738,26 @@ height=int(82 * self.scale_y))
                     page_label.image = img_tk 
                     page_label.pack(pady=10) 
                     page_images.append(img_tk) 
-                self.preview_images = page_images  # Keep reference 
+                self.preview_images = page_images 
             except Exception as e: 
                 tk.Label(inner_frame, text="Error loading PDF preview", bg="white", fg="black").pack() 
             x, y = self.scale(960, 500) 
             self.canvas.create_window(x, y, window=preview_frame) 
-            # NEW FEATURE: Add page range selection controls 
             total_pages = self.get_page_count() 
             page_sel_frame = tk.Frame(self.canvas, bg="white") 
-
             tk.Label(page_sel_frame, text="Print Pages From:", bg="white", font=("Tahoma", int(20 * self.scale_y))).pack(side="left", padx=5) 
-
-            # Bind to an IntVar that defaults to 1
-            from_var = tk.IntVar(value=1)
-            self.print_from_spinbox = tk.Spinbox(page_sel_frame, from_=1, to=total_pages, width=5, font=("Tahoma", int(20 * self.scale_y)), textvariable=from_var)
+            from_var = tk.IntVar(value=1) 
+            self.print_from_spinbox = tk.Spinbox(page_sel_frame, from_=1, to=total_pages, width=5, font=("Tahoma", int(20 * self.scale_y)), textvariable=from_var) 
             self.print_from_spinbox.pack(side="left", padx=5) 
-
             tk.Label(page_sel_frame, text="To:", bg="white", font=("Tahoma", int(20 * self.scale_y))).pack(side="left", padx=5) 
-            # Optionally, you might want the "To:" spinbox to default to total_pages:
-            to_var = tk.IntVar(value=total_pages)
-            self.print_to_spinbox = tk.Spinbox(page_sel_frame, from_=1, to=total_pages, width=5, font=("Tahoma", int(20 * self.scale_y)), textvariable=to_var)
+            to_var = tk.IntVar(value=total_pages) 
+            self.print_to_spinbox = tk.Spinbox(page_sel_frame, from_=1, to=total_pages, width=5, font=("Tahoma", int(20 * self.scale_y)), textvariable=to_var) 
             self.print_to_spinbox.pack(side="left", padx=5) 
-
-            # Place the page selection frame on the canvas 
             x_sel, y_sel = self.scale(960, 950) 
-            self.canvas.create_window(x_sel, y_sel, window=page_sel_frame)
+            self.canvas.create_window(x_sel, y_sel, window=page_sel_frame) 
         else: 
             x, y = self.scale(960, 500) 
-            self.canvas.create_text(x, y, text="Preview not available for this file type.", 
-                                      font=("Tahoma", int(40 * self.scale_y), "bold"), fill="black")     
+            self.canvas.create_text(x, y, text="Preview not available for this file type.", font=("Tahoma", int(40 * self.scale_y), "bold"), fill="black")     
         buttons = [ 
             ("frame2_button_1.png", (1220, 800), self.next_slide), 
             ("frame2_button_2.png", (750, 800), self.previous_slide) 
@@ -763,19 +808,17 @@ height=int(82 * self.scale_y))
                 self.image_refs.append(img) 
             except Exception as e: 
                 print(f"Error loading {img_name}: {e}") 
-        # For Size Buttons 
         self.paper_size_buttons = {} 
         paper_size_buttons_data = [ 
             ("frame3_button_1.png", (1340, 460), "Short", 1), 
-            ("frame3_button_6.png", (1340, 600), "Long", 2) 
+            ("frame3_button_6.png", (1340, 600), "Long", 1) 
         ] 
         for img_name, pos, size, cost in paper_size_buttons_data: 
             try: 
                 img_path = relative_to_assets("frame3", img_name) 
                 normal_img = PhotoImage(file=img_path) 
                 selected_img = self.get_enlarged_image(img_path, 1.2) 
-                btn = Button(self.root, image=normal_img, borderwidth=0, highlightthickness=0, 
-                             command=lambda s=size, c=cost: self.select_paper_size(s, c), relief="flat") 
+                btn = Button(self.root, image=normal_img, borderwidth=0, highlightthickness=0, command=lambda s=size, c=cost: self.select_paper_size(s, c), relief="flat") 
                 self.paper_size_buttons[size] = { 
                     "button": btn, 
                     "normal_img": normal_img, 
@@ -788,10 +831,9 @@ height=int(82 * self.scale_y))
                 self.image_refs.append(selected_img) 
             except Exception as e: 
                 print(f"Error loading {img_name}: {e}") 
-        # For Color Buttons 
         self.paper_color_buttons = {} 
         paper_color_buttons_data = [ 
-            ("frame3_button_2.png", (550, 460), "Black and White", 2), 
+            ("frame3_button_2.png", (550, 460), "Black and White", 1), 
             ("frame3_button_3.png", (550, 600), "Colored", 3) 
         ] 
         for img_name, pos, color, cost in paper_color_buttons_data: 
@@ -799,8 +841,7 @@ height=int(82 * self.scale_y))
                 img_path = relative_to_assets("frame3", img_name) 
                 normal_img = PhotoImage(file=img_path) 
                 selected_img = self.get_enlarged_image(img_path, 1.2) 
-                btn = Button(self.root, image=normal_img, borderwidth=0, highlightthickness=0, 
-                             command=lambda col=color, c=cost: self.select_paper_color(col, c), relief="flat") 
+                btn = Button(self.root, image=normal_img, borderwidth=0, highlightthickness=0, command=lambda col=color, c=cost: self.select_paper_color(col, c), relief="flat") 
                 self.paper_color_buttons[color] = { 
                     "button": btn, 
                     "normal_img": normal_img, 
@@ -813,7 +854,6 @@ height=int(82 * self.scale_y))
                 self.image_refs.append(selected_img) 
             except Exception as e: 
                 print(f"Error loading {img_name}: {e}") 
-        # For Copies Buttons 
         self.copies_buttons = {} 
         copies_buttons_data = [ 
             ("frame3_button_4.png", (775, 815), "One Copy", None), 
@@ -824,8 +864,7 @@ height=int(82 * self.scale_y))
                 img_path = relative_to_assets("frame3", img_name) 
                 normal_img = PhotoImage(file=img_path) 
                 selected_img = self.get_enlarged_image(img_path, 1.2) 
-                btn = Button(self.root, image=normal_img, borderwidth=0, highlightthickness=0, 
-                             command=lambda opt=option: self.select_copies(opt), relief="flat") 
+                btn = Button(self.root, image=normal_img, borderwidth=0, highlightthickness=0, command=lambda opt=option: self.select_copies(opt), relief="flat") 
                 self.copies_buttons[option] = { 
                     "button": btn, 
                     "normal_img": normal_img, 
@@ -838,7 +877,6 @@ height=int(82 * self.scale_y))
                 self.image_refs.append(selected_img) 
             except Exception as e: 
                 print(f"Error loading {img_name}: {e}") 
-        # Show spinbox if Multiple Copies is selected 
         if self.selected_copies == "Multiple Copies": 
             try: 
                 x, y = self.scale(928, 875) 
@@ -850,7 +888,6 @@ height=int(82 * self.scale_y))
                 print(f"Error updating spinbox position: {e}") 
         else: 
             self.copies_spinbox.place_forget() 
-        # Navigation Buttons for Frame 3 
         nav_buttons = [ 
             ("frame3_button_7.png", (1580, 875), self.next_slide), 
             ("frame3_button_8.png", (340, 875), self.previous_slide) 
@@ -858,8 +895,7 @@ height=int(82 * self.scale_y))
         for img_name, pos, command in nav_buttons: 
             try: 
                 btn_img = PhotoImage(file=relative_to_assets("frame3", img_name)) 
-                btn = Button(self.root, image=btn_img, borderwidth=0, highlightthickness=0, 
-                             command=command, relief="flat") 
+                btn = Button(self.root, image=btn_img, borderwidth=0, highlightthickness=0, command=command, relief="flat") 
                 x, y = self.scale(*pos) 
                 self.canvas.create_window(x, y, window=btn) 
                 self.image_refs.append(btn_img) 
@@ -1020,6 +1056,12 @@ height=int(82 * self.scale_y))
                 self.file_path = full_path 
                 print(f"File selected: {full_path}") 
                 top.destroy() 
+                try: 
+                    enlarged_img = self.get_enlarged_image(relative_to_assets("frame1", "frame1_button_4.png"), 1.2)
+                    self.send_file_btn.config(image=enlarged_img)
+                    self.send_file_btn.image = enlarged_img
+                except Exception as e:
+                    print("Error enlarging Send File button:", e)
             else: 
                 messagebox.showwarning("No Selection", "Please select a file.") 
         select_btn = tk.Button(top, text="Select File", font=("Tahoma", int(16 * self.scale_y)), command=on_select) 
@@ -1083,6 +1125,7 @@ height=int(82 * self.scale_y))
                 self.file_path = full_path 
                 print(f"File selected from USB: {full_path}") 
                 top.destroy() 
+                messagebox.showinfo("File Received", "Your file has been successfully sent!") 
             else: 
                 messagebox.showwarning("No Selection", "Please select a file.") 
         select_btn = tk.Button(top, text="Select File", font=("Tahoma", 16), command=on_select) 
@@ -1125,11 +1168,14 @@ height=int(82 * self.scale_y))
         flask_thread = threading.Thread(target=run_flask_server) 
         flask_thread.daemon = True 
         flask_thread.start() 
-        print("Wi-Fi upload server started on port 5000.") 
+        print("Wi‑Fi upload server started on port 5000.") 
 
-# ============================================================================
+# 
+# ==========================================================================
+# == 
 # MAIN EXECUTION 
-# ============================================================================
+# ==========================================================================
+# == 
 if __name__ == "__main__": 
     root = tk.Tk() 
     app = InstaPrintApp(root) 
