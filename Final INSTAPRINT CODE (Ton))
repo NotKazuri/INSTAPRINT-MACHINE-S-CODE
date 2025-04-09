@@ -1029,7 +1029,7 @@ class InstaPrintApp:
         listbox.pack(side="left", fill="both", expand=True)
         scrollbar.config(command=listbox.yview)
         try:
-            allowed_exts = ('.pdf', '.docx', '.doc', '.xlsx', '.pptx')
+            allowed_exts = ('.pdf', '.docx', '.doc', '.xlsx', '.pptx', 'png', 'jpg', 'jpeg')
             files = [f for f in os.listdir(custom_folder) if os.path.isfile(os.path.join(custom_folder, f)) and f.lower().endswith(allowed_exts)]
             print("Files found:", files)
             for f in files:
@@ -1119,7 +1119,7 @@ class InstaPrintApp:
         listbox = tk.Listbox(frame, font=("Tahoma", 16), yscrollcommand=scrollbar.set)
         listbox.pack(side="left", fill="both", expand=True)
         scrollbar.config(command=listbox.yview)
-        allowed_exts = ('.pdf', '.docx', '.doc', '.xlsx', '.pptx')
+        allowed_exts = ('.pdf', '.docx', '.doc', '.xlsx', '.pptx', 'png', 'jpg', 'jpeg')
         try:
             files = [f for f in os.listdir(drive) if os.path.isfile(os.path.join(drive, f)) and f.lower().endswith(allowed_exts)]
             print("Files found on USB:", files)
